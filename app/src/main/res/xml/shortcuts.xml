@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="open_archive"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_open"
+        android:shortcutShortLabel="@string/open_archive"
+        android:shortcutLongLabel="@string/open_archive">
+        <intent
+            android:action="com.hatchstudio.archive.OPEN"
+            android:targetClass="com.hatchstudio.archive.MainActivity"
+            android:targetPackage="com.hatchstudio.archive" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+</shortcuts>
