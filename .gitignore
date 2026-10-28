@@ -13,7 +13,7 @@ dist/
 *.keystore
 keystore.properties
 .artifacts/
-screenshots/
+/screenshots/
 qa/
 .freebuff/
 *.apk
