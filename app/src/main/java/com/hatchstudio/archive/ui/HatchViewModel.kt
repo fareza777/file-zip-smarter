@@ -2,6 +2,7 @@ package com.hatchstudio.archive.ui
 
 import android.app.Application
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
@@ -10,7 +11,9 @@ import com.hatchstudio.archive.core.ArchiveFailure
 import com.hatchstudio.archive.core.ArchiveOpener
 import com.hatchstudio.archive.core.ArchiveSource
 import com.hatchstudio.archive.core.NativeEngine
+import com.hatchstudio.archive.data.ArchiveCleaner
 import com.hatchstudio.archive.data.Archives
+import com.hatchstudio.archive.data.CleanerItem
 import com.hatchstudio.archive.data.ConflictPolicy
 import com.hatchstudio.archive.data.ExtractionJob
 import com.hatchstudio.archive.data.JobMode
@@ -22,9 +25,12 @@ import com.hatchstudio.archive.data.RecentStore
 import com.hatchstudio.archive.data.SafNode
 import com.hatchstudio.archive.data.SafTree
 import com.hatchstudio.archive.data.SettingsStore
+import com.hatchstudio.archive.data.StorageSpace
 import com.hatchstudio.archive.data.ThemeMode
 import com.hatchstudio.archive.jobs.JobManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -71,9 +77,17 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
     private val _vaultCount = MutableStateFlow(vault.count)
     val vaultCount: StateFlow<Int> = _vaultCount.asStateFlow()
 
+    private val _cleaner = MutableStateFlow(CleanerState())
+    val cleaner: StateFlow<CleanerState> = _cleaner.asStateFlow()
+
+    private val _preview = MutableStateFlow<EntryPreview?>(null)
+    val preview: StateFlow<EntryPreview?> = _preview.asStateFlow()
+
+    private var cleanerScan: Job? = null
     private var tree: SafTree? = null
     private var currentArchive: CurrentArchive? = null
     private var pendingSource: ArchiveSource? = null
+    private var pendingQuickClean = false
     private var batchSources: List<BatchItem>? = null
     private val sessionPasswords = ConcurrentHashMap<String, String>()
 
@@ -246,6 +260,187 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         settingsStore.clearLanding()
         tree = null
         _files.value = FilesUiState()
+        _cleaner.value = CleanerState()
+    }
+
+    // ---------------- space cleaner ----------------
+
+    fun scanCleaner() {
+        val safTree = tree
+        if (safTree == null) {
+            _events.tryEmit(UiEvent.Message("Choose a landing folder before scanning for archives."))
+            return
+        }
+        cleanerScan?.cancel()
+        _cleaner.value = CleanerState(
+            scanning = true,
+            folderLabel = _files.value.treeLabel,
+        )
+        cleanerScan = viewModelScope.launch {
+            try {
+                val scan = ArchiveCleaner.scan(safTree) { folders, _ ->
+                    _cleaner.update { it.copy(foldersScanned = folders) }
+                }
+                _cleaner.value = CleanerState(
+                    scanning = false,
+                    folderLabel = scan.folderLabel,
+                    items = scan.items,
+                    foldersScanned = scan.foldersScanned,
+                    truncated = scan.truncated,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _cleaner.value = CleanerState(
+                    scanning = false,
+                    folderLabel = _files.value.treeLabel,
+                    error = e.message ?: "The landing folder could not be scanned.",
+                )
+            }
+        }
+    }
+
+    fun closeCleaner() {
+        cleanerScan?.cancel()
+        _cleaner.value = CleanerState()
+    }
+
+    fun toggleCleanerItem(id: String) {
+        _cleaner.update { state ->
+            val next = state.selected.toMutableSet()
+            if (!next.add(id)) next.remove(id)
+            state.copy(selected = next)
+        }
+    }
+
+    fun toggleAllCleaner() {
+        _cleaner.update { state ->
+            val all = state.items.map { it.id }.toSet()
+            state.copy(selected = if (state.selected.size == all.size) emptySet() else all)
+        }
+    }
+
+    fun startCleaner(): Boolean {
+        val state = _cleaner.value
+        val nodes = state.selectedItems.map(CleanerItem::node)
+        if (nodes.isEmpty()) {
+            _events.tryEmit(UiEvent.Message("Choose at least one archive to clean up."))
+            return false
+        }
+        prepareBatch(nodes, quickClean = true)
+        val opened = _draft.value != null
+        if (opened) {
+            cleanerScan?.cancel()
+            _cleaner.value = CleanerState()
+        }
+        return opened
+    }
+
+    // ---------------- entry preview ----------------
+
+    fun previewEntry(index: Int) {
+        val current = currentArchive ?: return
+        val entry = current.opened.entries.firstOrNull { it.index == index && !it.isDirectory } ?: return
+        if (!entry.canExtract) {
+            _events.tryEmit(UiEvent.Message("That entry is blocked for safety."))
+            return
+        }
+        val mime = SafTree.mimeFor(entry.displayName)
+        val kind = when {
+            entry.category == com.hatchstudio.archive.core.FileCategory.Image || mime.startsWith("image/") ->
+                PreviewKind.IMAGE
+            mime.startsWith("text/") || entry.extension in TEXT_EXTENSIONS -> PreviewKind.TEXT
+            else -> PreviewKind.OTHER
+        }
+        _preview.value?.file?.let { runCatching { it.delete() } }
+        _preview.value = EntryPreview(
+            name = entry.displayName,
+            mimeType = mime,
+            size = entry.size,
+            kind = kind,
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val dir = File(getApplication<Application>().cacheDir, "hatch/preview").apply { mkdirs() }
+                val bytes = NativeEngine.preview(
+                    handle = current.opened.handle,
+                    index = index,
+                    password = current.password,
+                    tempDir = dir.absolutePath,
+                    maxBytes = PREVIEW_MAX_BYTES,
+                )
+                val shown = when (kind) {
+                    PreviewKind.IMAGE -> {
+                        val bitmap = decodePreview(bytes)
+                        if (bitmap != null) {
+                            EntryPreview(entry.displayName, mime, entry.size, kind, loading = false, image = bitmap)
+                        } else {
+                            val file = writePreview(dir, entry.displayName, bytes)
+                            EntryPreview(entry.displayName, mime, entry.size, kind, loading = false, file = file)
+                        }
+                    }
+                    PreviewKind.TEXT -> EntryPreview(
+                        entry.displayName,
+                        mime,
+                        entry.size,
+                        kind,
+                        loading = false,
+                        text = decodeText(bytes),
+                    )
+                    PreviewKind.OTHER -> EntryPreview(
+                        entry.displayName,
+                        mime,
+                        entry.size,
+                        kind,
+                        loading = false,
+                        file = writePreview(dir, entry.displayName, bytes),
+                    )
+                }
+                _preview.value = shown
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val failure = ArchiveFailure.from(e)
+                _preview.value = _preview.value?.copy(loading = false, error = failure.userMessage)
+            }
+        }
+    }
+
+    fun dismissPreview() {
+        _preview.value?.file?.let { runCatching { it.delete() } }
+        _preview.value = null
+    }
+
+    private fun decodePreview(bytes: ByteArray): android.graphics.Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > PREVIEW_IMAGE_EDGE ||
+            bounds.outHeight / sample > PREVIEW_IMAGE_EDGE
+        ) {
+            sample *= 2
+        }
+        return BitmapFactory.decodeByteArray(
+            bytes,
+            0,
+            bytes.size,
+            BitmapFactory.Options().apply { inSampleSize = sample },
+        )
+    }
+
+    private fun decodeText(bytes: ByteArray): String {
+        val clean = bytes.copyOfRange(0, minOf(bytes.size, PREVIEW_TEXT_BYTES))
+        val decoded = String(clean, Charsets.UTF_8).removePrefix("\uFEFF")
+        return if (decoded.length > PREVIEW_TEXT_CHARS) {
+            decoded.take(PREVIEW_TEXT_CHARS) + "\n\n… preview truncated"
+        } else decoded
+    }
+
+    private fun writePreview(dir: File, name: String, bytes: ByteArray): File {
+        val target = File(dir, "${System.currentTimeMillis()}-${ArchiveOpener.safeFileName(name)}")
+        target.writeBytes(bytes)
+        return target
     }
 
     // ---------------- archive opening ----------------
@@ -272,7 +467,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun openExternalUri(uri: Uri, nameHint: String? = null) {
+    fun openExternalUri(uri: Uri, nameHint: String? = null, quickClean: Boolean = false) {
         viewModelScope.launch {
             _loading.value = "Opening archive…"
             val source = withContext(Dispatchers.IO) { buildSource(uri, nameHint) }
@@ -281,7 +476,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
                 _events.emit(UiEvent.Message("That file could not be read."))
                 return@launch
             }
-            openSourceInternal(source, password = null)
+            openSourceInternal(source, password = null, quickClean = quickClean)
         }
     }
 
@@ -304,8 +499,15 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
                 runCatching {
                     getApplication<Application>().contentResolver.takePersistableUriPermission(
                         uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                     )
+                }.onFailure {
+                    runCatching {
+                        getApplication<Application>().contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                        )
+                    }
                 }
                 var name = nameHint
                 var size = 0L
@@ -332,7 +534,12 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun openSourceInternal(source: ArchiveSource, password: String?) {
+    private suspend fun openSourceInternal(
+        source: ArchiveSource,
+        password: String?,
+        quickClean: Boolean = false,
+    ) {
+        pendingQuickClean = quickClean
         _loading.value = if (source.displayName.length > 28) {
             "Opening ${source.displayName.take(26)}…"
         } else {
@@ -366,6 +573,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
             pendingSource = null
             _openPassword.value = null
             _loading.value = null
+            if (quickClean) prepareExtraction(quickClean = true)
             if (opened.source.uri != null && opened.source.ownedPath == null) {
                 recentStore.add(
                     RecentArchive(
@@ -407,23 +615,26 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
                 vault.save(source.displayName, password)
                 _vaultCount.value = vault.count
             }
-            openSourceInternal(source, password)
+            openSourceInternal(source, password, pendingQuickClean)
         }
     }
 
     fun dismissOpenPassword() {
         pendingSource?.let(::cleanupStaged)
         pendingSource = null
+        pendingQuickClean = false
         _openPassword.value = null
     }
 
     fun closeInspector(deleteStaged: Boolean = true) {
+        dismissPreview()
         currentArchive?.opened?.close()
         if (deleteStaged) currentArchive?.ownedStaged?.let(::deleteOwned)
         currentArchive = null
         _inspector.value = null
         _openPassword.value = null
         pendingSource = null
+        pendingQuickClean = false
     }
 
     private fun cleanupStaged(source: ArchiveSource) {
@@ -465,7 +676,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------------- extraction drafts ----------------
 
-    fun prepareExtraction() {
+    fun prepareExtraction(quickClean: Boolean = false) {
         val state = _inspector.value ?: return
         val opened = currentArchive?.opened ?: return
         if (state.selected.isEmpty()) {
@@ -486,6 +697,12 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
             else -> null
         }
         val landing = settings.value.landingTreeUri?.let(Uri::parse)
+        val peak = state.entries
+            .filter { it.index in state.selected && !it.isDirectory }
+            .maxOfOrNull { it.size } ?: 0L
+        val files = opened.entries.filter { !it.isDirectory }
+        val canRemoveSource = opened.canDeleteSource && files.isNotEmpty() &&
+            files.all { it.index in state.selected }
         batchSources = null
         _draft.value = ExtractionDraft(
             title = opened.info.displayName.ifBlank { opened.source.displayName },
@@ -500,10 +717,15 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
             reclaimReason = reclaimReason,
             isBatch = false,
             needsPassword = opened.info.encryptedCount > 0 && currentArchive?.password.isNullOrEmpty(),
+            freeBytes = StorageSpace.availableBytes(getApplication(), landing),
+            reclaimPeakBytes = peak,
+            canRemoveSource = canRemoveSource,
+            removeSource = quickClean && canRemoveSource,
+            quickClean = quickClean,
         )
     }
 
-    fun prepareBatch(nodes: List<SafNode>) {
+    fun prepareBatch(nodes: List<SafNode>, quickClean: Boolean = false) {
         val safTree = tree ?: return
         val usable = nodes.filter {
             !it.isDirectory && Archives.isArchiveName(it.name) && !isSplitPart(it.name)
@@ -544,6 +766,10 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
             reclaimReason = "Reclaim works one archive at a time.",
             isBatch = true,
             batchCount = usable.size,
+            freeBytes = StorageSpace.availableBytes(getApplication(), landing),
+            removeSource = quickClean,
+            canRemoveSource = quickClean,
+            quickClean = quickClean,
         )
     }
 
@@ -556,8 +782,15 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch(Dispatchers.IO) {
             val label = runCatching { SafTree(getApplication(), uri).displayName() }.getOrDefault("Folder")
-            _draft.update { it?.copy(destinationTreeUri = uri, destinationLabel = label) }
+            val free = StorageSpace.availableBytes(getApplication(), uri)
+            _draft.update {
+                it?.copy(destinationTreeUri = uri, destinationLabel = label, freeBytes = free)
+            }
         }
+    }
+
+    fun setDraftRemoveSource(value: Boolean) {
+        _draft.update { it?.copy(removeSource = value) }
     }
 
     fun setDraftMode(mode: JobMode) {
@@ -594,6 +827,20 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         }
         val destinationLabel = draftState.destinationLabel ?: "Folder"
         val batch = batchSources
+        val required = if (draftState.isBatch) {
+            (batch?.maxOfOrNull { it.size } ?: 0L) + StorageSpace.HEADROOM
+        } else {
+            draftState.requiredBytes
+        }
+        val free = StorageSpace.availableBytes(getApplication(), destination)
+        if (!StorageSpace.hasRoom(free, required)) {
+            _events.tryEmit(
+                UiEvent.Message(
+                    "Not enough free space in this folder. Free some space or choose another destination.",
+                ),
+            )
+            return
+        }
         if (draftState.isBatch && batch != null) {
             val jobs = batch.map { item ->
                 ExtractionJob(
@@ -612,6 +859,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
                     totalEntries = 0,
                     totalBytes = 0,
                     multipart = item.source.multipart,
+                    removeSource = draftState.removeSource && !item.source.multipart,
                 )
             }
             jobManager.enqueue(jobs, null)
@@ -676,6 +924,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
             totalEntries = if (reclaim) current.opened.entries.size else selected.size,
             totalBytes = totalBytes,
             multipart = current.source.multipart,
+            removeSource = draftState.removeSource && !reclaim && draftState.canRemoveSource,
         )
         jobManager.enqueue(listOf(job), password)
         current.ownedStaged = null
@@ -757,8 +1006,20 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         settingsStore.setOnboarded(true)
     }
 
+    companion object {
+        private const val PREVIEW_MAX_BYTES = 24L * 1024 * 1024
+        private const val PREVIEW_IMAGE_EDGE = 2048
+        private const val PREVIEW_TEXT_BYTES = 256 * 1024
+        private const val PREVIEW_TEXT_CHARS = 120_000
+        private val TEXT_EXTENSIONS = setOf(
+            "txt", "md", "markdown", "json", "xml", "csv", "tsv", "log", "ini",
+            "yml", "yaml", "html", "htm", "css", "js", "ts", "kt", "java", "rs",
+            "py", "sh", "bat", "sql", "toml", "properties", "srt", "vtt",
+        )
+    }
 
     override fun onCleared() {
+        dismissPreview()
         currentArchive?.opened?.close()
         currentArchive?.ownedStaged?.let(::deleteOwned)
         currentArchive = null

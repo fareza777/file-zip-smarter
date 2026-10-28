@@ -276,6 +276,26 @@ class JobManager private constructor(private val context: Context) {
                 return true
             }
 
+            val remaining = finalSelected.mapNotNull { opened.entries.getOrNull(it) }
+                .filter { !it.isDirectory }
+            val remainingBytes = remaining.sumOf { it.size }
+            val peakEntry = remaining.maxOfOrNull { it.size } ?: 0L
+            val required = com.hatchstudio.archive.data.StorageSpace.requiredBytes(
+                selectedBytes = remainingBytes,
+                reclaimPeakBytes = peakEntry,
+                reclaim = job.reclaim,
+            )
+            val available = com.hatchstudio.archive.data.StorageSpace.availableBytes(
+                context,
+                destTreeUri,
+            )
+            if (!com.hatchstudio.archive.data.StorageSpace.hasRoom(available, required)) {
+                throw ArchiveFailure(
+                    "E_NO_SPACE",
+                    "Not enough free space. This job needs about ${shortSize(required)}, but the destination has ${shortSize(available ?: 0)}. Free some space or choose another folder.",
+                )
+            }
+
             val sink = SafExtractionSink(
                 tree = tree,
                 destinationRootId = tree.rootDocumentId,
@@ -314,7 +334,15 @@ class JobManager private constructor(private val context: Context) {
             }
 
             if (result != 0) {
-                throw ArchiveFailure("E_IO", sink.lastError ?: "Extraction did not finish.")
+                val sinkError = sink.lastError ?: "Extraction did not finish."
+                val lower = sinkError.lowercase()
+                if (lower.contains("no space left") || lower.contains("enospc")) {
+                    throw ArchiveFailure(
+                        "E_NO_SPACE",
+                        "The destination ran out of space. Free some space, then resume this job.",
+                    )
+                }
+                throw ArchiveFailure("E_IO", sinkError)
             }
             finishSuccess(job, opened, journal)
             return true
@@ -365,28 +393,33 @@ class JobManager private constructor(private val context: Context) {
 
     private fun finishSuccess(job: ExtractionJob, opened: com.hatchstudio.archive.core.OpenedArchive, journal: JobJournal) {
         val source = opened.source
+        val files = opened.entries.filter { !it.isDirectory }
+        val fullySelected = job.selected == null || files.all { it.index in job.selected }
+        val allConfirmed = files.all { it.index in journal.completed }
+        // Never remove an archive that was partially selected, or one whose
+        // entries the engine skipped (links, unsafe paths, unsupported data).
+        val safeToRemove = fullySelected && allConfirmed
+        val shouldRemove = (job.reclaim || job.removeSource) && safeToRemove
+        val removed = if (shouldRemove) deleteSource(source) else true
+        val message = when {
+            job.reclaim && removed -> "Archive reclaimed"
+            job.reclaim -> "Extracted; source ZIP could not be removed"
+            job.removeSource && !safeToRemove -> "Extracted; source kept because not every item was confirmed"
+            job.removeSource && removed -> "Extracted and source removed"
+            job.removeSource -> "Extracted; source could not be removed"
+            else -> "Extracted"
+        }
         mutate(job.id) {
             it.copy(
                 state = JobState.COMPLETED,
                 completedEntries = it.totalEntries,
                 completedBytes = it.totalBytes,
-                message = if (it.reclaim) "Archive reclaimed" else "Extracted",
+                message = message,
+                sourceRemoved = removed && shouldRemove,
                 updatedAt = now(),
             )
         }
         store.clearArtifacts(job.id)
-        if (job.reclaim) {
-            // DocumentsContract is the supported delete path for SAF documents;
-            // ContentResolver.delete only works when the provider implements it.
-            source.uri?.let { uri ->
-                runCatching {
-                    android.provider.DocumentsContract.deleteDocument(context.contentResolver, uri)
-                }.onFailure {
-                    runCatching { context.contentResolver.delete(uri, null, null) }
-                }
-            }
-            source.file?.delete()
-        }
         cleanupOwnedSource(job)
         passwords.remove(job.id)
         _jobs.update { current ->
@@ -420,6 +453,26 @@ class JobManager private constructor(private val context: Context) {
         _jobs.update { list -> list.map { if (it.id == id) transform(it) else it } }
         store.save(_jobs.value)
     }
+
+    private fun deleteSource(source: ArchiveSource): Boolean {
+        source.uri?.let { uri ->
+            // DocumentsContract is the supported delete path for SAF documents;
+            // ContentResolver.delete only works when the provider implements it.
+            var deleted = runCatching {
+                android.provider.DocumentsContract.deleteDocument(context.contentResolver, uri)
+            }.getOrDefault(false)
+            if (!deleted) {
+                deleted = runCatching { context.contentResolver.delete(uri, null, null) > 0 }
+                    .getOrDefault(false)
+            }
+            if (deleted) return true
+        }
+        source.file?.let { file -> return runCatching { file.delete() }.getOrDefault(false) }
+        return source.uri == null && source.file == null
+    }
+
+    private fun shortSize(bytes: Long): String =
+        android.text.format.Formatter.formatShortFileSize(context, bytes)
 
     private fun sourceFor(job: ExtractionJob): ArchiveSource {
         val file = job.sourcePath?.let(::File)

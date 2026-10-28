@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -103,11 +104,15 @@ fun InspectorScreen(
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onPrepare: () -> Unit,
+    onPreview: (Int) -> Unit,
 ) {
     var showReclaimInfo by remember { mutableStateOf(false) }
     val info = state.info
     val lens = remember(info, state.entries) { buildStorageLens(info, state.entries) }
     val selectedBytes = state.selectedBytes
+    val previewable = if (state.selected.size == 1) {
+        state.entries.firstOrNull { it.index in state.selected && !it.isDirectory && it.canExtract }
+    } else null
 
     Column(
         Modifier
@@ -201,6 +206,19 @@ fun InspectorScreen(
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                    if (previewable != null) {
+                        IconButton(
+                            onClick = { onPreview(previewable.index) },
+                            modifier = Modifier.size(46.dp),
+                        ) {
+                            Icon(
+                                Icons.Rounded.Visibility,
+                                "Preview this file",
+                                modifier = Modifier.size(22.dp),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
                     }
                     Surface(
                         modifier = Modifier

@@ -28,6 +28,7 @@ data class OpenedArchive(
     val entries: List<ArchiveEntry>,
     val source: ArchiveSource,
     val canReclaim: Boolean,
+    val canDeleteSource: Boolean,
     val loadedAt: Long = System.currentTimeMillis(),
 ) {
     fun close() {
@@ -166,6 +167,7 @@ object ArchiveOpener {
                 entries = entries,
                 source = source,
                 canReclaim = info.reclaim.eligible && mode == NativeEngine.MODE_SMART && writable,
+                canDeleteSource = writable && !source.multipart,
             )
         } catch (e: Throwable) {
             runCatching { NativeEngine.close(handle) }

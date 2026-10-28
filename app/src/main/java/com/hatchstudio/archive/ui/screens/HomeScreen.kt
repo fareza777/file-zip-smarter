@@ -80,8 +80,10 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
 ) {
     val completed = jobs.count { it.state == JobState.COMPLETED }
-    val reclaimed = jobs.filter { it.state == JobState.COMPLETED && it.mode == JobMode.RECLAIM }
-        .sumOf { it.archiveSize }
+    val reclaimed = jobs.filter {
+        it.state == JobState.COMPLETED &&
+            (it.mode == JobMode.RECLAIM || (it.removeSource && it.sourceRemoved))
+    }.sumOf { it.archiveSize }
     val active = jobs.firstOrNull { it.state == JobState.RUNNING || it.state == JobState.PAUSED }
     val pending = jobs.count { it.state == JobState.QUEUED || it.state == JobState.NEEDS_PASSWORD }
 

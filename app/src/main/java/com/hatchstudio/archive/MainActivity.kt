@@ -56,8 +56,10 @@ import com.hatchstudio.archive.ui.screens.HomeScreen
 import com.hatchstudio.archive.ui.screens.InspectorScreen
 import com.hatchstudio.archive.ui.screens.QueueScreen
 import com.hatchstudio.archive.ui.screens.SettingsScreen
+import com.hatchstudio.archive.ui.sheets.CleanerSheet
 import com.hatchstudio.archive.ui.sheets.ExtractionSheet
 import com.hatchstudio.archive.ui.sheets.LoadingScrim
+import com.hatchstudio.archive.ui.sheets.PreviewDialog
 import com.hatchstudio.archive.ui.sheets.OnboardingScreen
 import com.hatchstudio.archive.ui.sheets.PasswordDialog
 import com.hatchstudio.archive.ui.theme.HatchTheme
@@ -113,7 +115,7 @@ class MainActivity : ComponentActivity() {
         }
         if (uri != null) {
             vm.onboardingDone()
-            vm.openExternalUri(uri)
+            vm.openExternalUri(uri, quickClean = intent.action == Intent.ACTION_SEND)
             return
         }
         if (intent.getBooleanExtra(EXTRA_OPEN_QUEUE, false)) {
@@ -134,8 +136,11 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
     val openPassword by vm.openPassword.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val vaultCount by vm.vaultCount.collectAsStateWithLifecycle()
+    val cleaner by vm.cleaner.collectAsStateWithLifecycle()
+    val preview by vm.preview.collectAsStateWithLifecycle()
 
     var tab by rememberSaveable { mutableStateOf(AppTab.HOME) }
+    var showCleaner by rememberSaveable { mutableStateOf(false) }
     var pickingDestination by remember { mutableStateOf(false) }
     var jobPassword by remember { mutableStateOf<ExtractionJob?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -202,6 +207,11 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
                 vm.onboardingDone()
                 (context as? android.app.Activity)?.finish()
             }
+            preview != null -> vm.dismissPreview()
+            showCleaner -> {
+                showCleaner = false
+                vm.closeCleaner()
+            }
             inspector != null -> vm.closeInspector()
             tab != AppTab.HOME -> tab = AppTab.HOME
             else -> (context as? android.app.Activity)?.finish()
@@ -258,7 +268,11 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
                                     onOpenArchive = vm::openArchiveNode,
                                     onPickLanding = { pickLanding(false) },
                                     onOpenArchivePicker = { archivePicker.launch(arrayOf("*/*")) },
-                                    onBatchExtract = vm::prepareBatch,
+                                    onOpenCleaner = {
+                                        showCleaner = true
+                                        vm.scanCleaner()
+                                    },
+                                    onBatchExtract = { nodes -> vm.prepareBatch(nodes) },
                                     onDelete = vm::deleteNodes,
                                     onRename = vm::renameNode,
                                 )
@@ -314,6 +328,7 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
                                     onSelectAll = vm::selectAllEntries,
                                     onClearSelection = vm::clearEntrySelection,
                                     onPrepare = vm::prepareExtraction,
+                                    onPreview = vm::previewEntry,
                                 )
                             }
                         }
@@ -348,9 +363,28 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
             onMode = vm::setDraftMode,
             onConflict = vm::setDraftConflict,
             onRemember = vm::setDraftRemember,
+            onRemoveSource = vm::setDraftRemoveSource,
             onPassword = vm::setDraftPassword,
             onStart = vm::startExtraction,
         )
+    }
+
+    if (showCleaner) {
+        CleanerSheet(
+            state = cleaner,
+            onDismiss = {
+                showCleaner = false
+                vm.closeCleaner()
+            },
+            onRetry = vm::scanCleaner,
+            onToggle = vm::toggleCleanerItem,
+            onToggleAll = vm::toggleAllCleaner,
+            onStart = { if (vm.startCleaner()) showCleaner = false },
+        )
+    }
+
+    preview?.let { entry ->
+        PreviewDialog(preview = entry, onDismiss = vm::dismissPreview)
     }
 
     openPassword?.let { prompt ->

@@ -6,7 +6,7 @@ use crate::open::OpenOptions;
 use crate::session::Session;
 use crate::sink::{EntryOutput, Sink};
 use jni::objects::{JClass, JIntArray, JObject, JString, JValue};
-use jni::sys::{jboolean, jint, jlong, jstring};
+use jni::sys::{jboolean, jbyteArray, jint, jlong, jstring};
 use jni::JNIEnv;
 use std::collections::HashMap;
 use std::fs::File;
@@ -335,6 +335,43 @@ pub extern "system" fn Java_com_hatchstudio_archive_core_NativeEngine_nativeExtr
         Err(_) => {
             throw(&mut env, "E_INTERNAL|The archive engine stopped unexpectedly.");
             -1
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_hatchstudio_archive_core_NativeEngine_nativePreview(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    index: jint,
+    password: JString,
+    temp_dir: JString,
+    max_bytes: jlong,
+) -> jbyteArray {
+    let result = catch_unwind(AssertUnwindSafe(|| -> HatchResult<Vec<u8>> {
+        let session = get_session(handle)
+            .ok_or_else(|| HatchError::new(ErrorKind::Internal, "Archive session is closed."))?;
+        if index < 0 {
+            return Err(HatchError::new(ErrorKind::Internal, "That entry is not in this archive."));
+        }
+        let pwd = optional_string(&mut env, &password);
+        let temp = read_string(&mut env, &temp_dir)?;
+        let cap = (max_bytes.max(1) as u64).min(64 * 1024 * 1024);
+        session.preview_entry(index as usize, pwd.as_deref(), &PathBuf::from(temp), cap)
+    }));
+    match result {
+        Ok(Ok(bytes)) => env
+            .byte_array_from_slice(&bytes)
+            .map(|a| a.into_raw())
+            .unwrap_or(std::ptr::null_mut()),
+        Ok(Err(err)) => {
+            throw_hatch(&mut env, &err);
+            std::ptr::null_mut()
+        }
+        Err(_) => {
+            throw(&mut env, "E_INTERNAL|The archive engine stopped unexpectedly.");
+            std::ptr::null_mut()
         }
     }
 }

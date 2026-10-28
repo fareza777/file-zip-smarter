@@ -30,6 +30,20 @@ one tap away in Studio.
   private cache, and opened with the bundled engines.
 - **Pause, resume, recovery.** Jobs run in a foreground service, survive
   rotation and process death, and resume from a journal after a crash.
+- **Space cleaner.** Scan the landing tree for whole ZIP/RAR/7z/TAR/GZIP
+  archives, review every source and its folder, then extract and remove the
+  archives in one batch. Split sets are skipped. A source is deleted only after
+  every entry is confirmed; partial selections keep the archive.
+- **Quick clean from the share sheet.** Share an archive from another app to
+  Hatch and land directly on the extraction sheet with “Extract & free space”
+  preselected when the source is writable.
+- **Entry preview.** Look inside an archive before extracting: images render
+  inline, text opens in a private reader, and video/PDF/audio can be handed to
+  another app. Previews are capped at 24 MB, use private cache only, and respect
+  archive passwords.
+- **Free-space preflight.** The destination’s free bytes are checked before a
+  job starts and again per queued archive. `ENOSPC` becomes an actionable
+  message instead of a generic failure.
 - **Batch extraction.** Select several archives in Files and hatch them in one
   queue.
 - **File manager.** Browse the landing tree, search, sort, grid/list, rename,
@@ -119,6 +133,10 @@ plus a Pixel-class emulator, with release builds:
 | ZIP/TAR inspector, selection, Storage Lens | Verified |
 | Paper/Ink/Auto themes and all four tabs | Verified at 1080×2400 |
 | Rust core tests | 9 passed, 0 failed |
+| Space cleaner scan, 2-archive batch, source removal | 6 archives found; ZIP source deleted after all entries confirmed; outputs complete |
+| Inline text and image preview | Verified on emulator, API 36 |
+| Share-sheet quick clean (`ACTION_SEND`) | Sheet opens with Extract & free space; emulator, debug grant |
+| Free-space preflight | Destination free/needed shown in sheet; job-level guard compiled |
 
 Post-update and cold-start runs were also checked: the SAF grant survives an
 APK update and the reclaim write path keeps working.
@@ -127,7 +145,7 @@ APK update and the reclaim write path keeps working.
 
 - Build a signed **AAB** with `./gradlew bundleRelease` (Play does not accept
   an APK for new apps).
-- `versionCode 1`, `versionName 1.0.0`; bump both for every upload.
+- `versionCode 2`, `versionName 1.1.0`; bump both for every upload.
 - 64-bit ARM is included for devices; x86_64 is for emulators.
 - Complete **Data safety** as “no data collected or shared”. There is no
   network permission.
@@ -161,3 +179,7 @@ APK update and the reclaim write path keeps working.
 - Bzip2, XZ and Zstandard archives are reported as unsupported rather than
   guessed at.
 - Splitting a ZIP/RAR is not implemented; Hatch extracts existing sets only.
+- Inline preview is capped at 24 MB per entry. Larger images, video or PDFs
+  report “too large for a quick preview” and should be extracted.
+- Removing the source requires write access to that archive. Read-only shares
+  still extract normally, but Hatch keeps the original and explains why.

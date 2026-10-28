@@ -65,7 +65,7 @@
                 <data android:pathPattern=".*\\.tar\\.gz" />
             </intent-filter>
 
-            <intent-filter android:label="@string/open_archive">
+            <intent-filter android:label="@string/extract_free_space">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/zip" />

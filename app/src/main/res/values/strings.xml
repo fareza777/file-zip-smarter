@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">Hatch</string>
     <string name="open_archive">Open archive</string>
+    <string name="extract_free_space">Extract &amp; free space</string>
 </resources>

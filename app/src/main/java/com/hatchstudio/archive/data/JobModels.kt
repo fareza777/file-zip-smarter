@@ -45,6 +45,8 @@ data class ExtractionJob(
     val state: JobState = JobState.QUEUED,
     val message: String? = null,
     val multipart: Boolean = false,
+    val removeSource: Boolean = false,
+    val sourceRemoved: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
 ) {
@@ -87,6 +89,8 @@ data class ExtractionJob(
         put("state", state.name)
         put("message", message ?: JSONObject.NULL)
         put("multipart", multipart)
+        put("removeSource", removeSource)
+        put("sourceRemoved", sourceRemoved)
         put("createdAt", createdAt)
         put("updatedAt", updatedAt)
     }
@@ -132,6 +136,8 @@ data class ExtractionJob(
                 state = state,
                 message = o.optString("message").takeIf { it.isNotBlank() && it != "null" },
                 multipart = o.optBoolean("multipart"),
+                removeSource = o.optBoolean("removeSource"),
+                sourceRemoved = o.optBoolean("sourceRemoved"),
                 createdAt = o.optLong("createdAt", System.currentTimeMillis()),
                 updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
             )

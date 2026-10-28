@@ -8,6 +8,7 @@ pub enum ErrorKind {
     Unsupported,
     Corrupt,
     Io,
+    NoSpace,
     Cancelled,
     Unsafe,
     ReclaimUnavailable,
@@ -71,6 +72,7 @@ impl HatchError {
             ErrorKind::Unsupported => "E_UNSUPPORTED",
             ErrorKind::Corrupt => "E_CORRUPT",
             ErrorKind::Io => "E_IO",
+            ErrorKind::NoSpace => "E_NO_SPACE",
             ErrorKind::Cancelled => "E_CANCELLED",
             ErrorKind::Unsafe => "E_UNSAFE",
             ErrorKind::ReclaimUnavailable => "E_RECLAIM_UNAVAILABLE",
@@ -97,6 +99,17 @@ impl std::error::Error for HatchError {}
 
 impl From<io::Error> for HatchError {
     fn from(value: io::Error) -> Self {
+        let lower = value.to_string().to_lowercase();
+        if value.raw_os_error() == Some(28)
+            || lower.contains("no space left")
+            || lower.contains("enospc")
+        {
+            return Self::with_detail(
+                ErrorKind::NoSpace,
+                "The destination ran out of space. Free some space, then resume.",
+                value.to_string(),
+            );
+        }
         Self::with_detail(ErrorKind::Io, "The file could not be read or written.", value.to_string())
     }
 }

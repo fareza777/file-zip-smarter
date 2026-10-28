@@ -1,13 +1,16 @@
 package com.hatchstudio.archive.ui
 
+import android.graphics.Bitmap
 import android.net.Uri
 import com.hatchstudio.archive.core.ArchiveEntry
 import com.hatchstudio.archive.core.ArchiveInfo
 import com.hatchstudio.archive.core.ArchiveSource
 import com.hatchstudio.archive.core.OpenedArchive
+import com.hatchstudio.archive.data.CleanerItem
 import com.hatchstudio.archive.data.ConflictPolicy
 import com.hatchstudio.archive.data.JobMode
 import com.hatchstudio.archive.data.SafNode
+import com.hatchstudio.archive.data.StorageSpace
 import java.io.File
 
 enum class AppTab { HOME, FILES, QUEUE, SETTINGS }
@@ -75,7 +78,22 @@ data class ExtractionDraft(
     val needsPassword: Boolean = false,
     val password: String = "",
     val rememberPassword: Boolean = true,
-)
+    val freeBytes: Long? = null,
+    val reclaimPeakBytes: Long = 0,
+    val removeSource: Boolean = false,
+    val canRemoveSource: Boolean = false,
+    val quickClean: Boolean = false,
+) {
+    val requiredBytes: Long
+        get() = StorageSpace.requiredBytes(
+            selectedBytes = selectedBytes,
+            reclaimPeakBytes = reclaimPeakBytes,
+            reclaim = mode == JobMode.RECLAIM,
+        )
+
+    val enoughSpace: Boolean
+        get() = StorageSpace.hasRoom(freeBytes, requiredBytes)
+}
 
 sealed interface UiEvent {
     data class Message(val text: String) : UiEvent
@@ -100,4 +118,35 @@ data class BatchItem(
     val displayName: String,
     val size: Long,
     val format: String,
+)
+
+data class CleanerState(
+    val scanning: Boolean = false,
+    val folderLabel: String = "",
+    val items: List<CleanerItem> = emptyList(),
+    val selected: Set<String> = emptySet(),
+    val foldersScanned: Int = 0,
+    val truncated: Boolean = false,
+    val error: String? = null,
+) {
+    val selectedItems: List<CleanerItem>
+        get() = items.filter { it.id in selected }
+    val selectedBytes: Long
+        get() = selectedItems.sumOf { it.size }
+    val totalBytes: Long
+        get() = items.sumOf { it.size }
+}
+
+enum class PreviewKind { IMAGE, TEXT, OTHER }
+
+data class EntryPreview(
+    val name: String,
+    val mimeType: String,
+    val size: Long,
+    val kind: PreviewKind,
+    val loading: Boolean = true,
+    val error: String? = null,
+    val image: Bitmap? = null,
+    val text: String? = null,
+    val file: File? = null,
 )

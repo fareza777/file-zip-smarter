@@ -20,6 +20,15 @@ class ArchiveFailure(
     companion object {
         fun from(throwable: Throwable): ArchiveFailure {
             val raw = throwable.message.orEmpty()
+            val lower = raw.lowercase()
+            if (lower.contains("no space left") || lower.contains("enospc")) {
+                return ArchiveFailure(
+                    code = "E_NO_SPACE",
+                    userMessage = "The destination ran out of space. Free some space, then resume.",
+                    detail = raw,
+                    cause = throwable,
+                )
+            }
             val parts = raw.split('|', limit = 3)
             if (parts.size >= 2 && parts[0].startsWith("E_")) {
                 return ArchiveFailure(
@@ -155,6 +164,15 @@ object NativeEngine {
     ): Int
 
     @JvmStatic
+    private external fun nativePreview(
+        handle: Long,
+        index: Int,
+        password: String?,
+        tempDir: String,
+        maxBytes: Long,
+    ): ByteArray?
+
+    @JvmStatic
     private external fun nativeVersion(): String
 
     fun open(
@@ -186,6 +204,15 @@ object NativeEngine {
         password: String?,
         sink: NativeSink,
     ): Int = nativeExtract(handle, selected, completed, password, sink)
+
+    fun preview(
+        handle: Long,
+        index: Int,
+        password: String?,
+        tempDir: String,
+        maxBytes: Long,
+    ): ByteArray = nativePreview(handle, index, password, tempDir, maxBytes)
+        ?: throw ArchiveFailure("E_IO", "That entry could not be read.")
 
     fun version(): String = runCatching { nativeVersion() }.getOrDefault("hatch-core")
 

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -92,6 +93,7 @@ fun ExtractionSheet(
     onMode: (JobMode) -> Unit,
     onConflict: (ConflictPolicy) -> Unit,
     onRemember: (Boolean) -> Unit,
+    onRemoveSource: (Boolean) -> Unit,
     onPassword: (String) -> Unit,
     onStart: () -> Unit,
 ) {
@@ -202,6 +204,34 @@ fun ExtractionSheet(
                 }
             }
 
+            val freeBytes = draft.freeBytes
+            if (freeBytes != null) {
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (draft.enoughSpace) Icons.Rounded.Check else Icons.Rounded.Warning,
+                        null,
+                        modifier = Modifier.size(15.dp),
+                        tint = if (draft.enoughSpace) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (draft.enoughSpace) {
+                            "${formatBytes(freeBytes)} free · this job needs about ${formatBytes(draft.requiredBytes)}"
+                        } else {
+                            "Only ${formatBytes(freeBytes)} free · needs about ${formatBytes(draft.requiredBytes)}"
+                        },
+                        fontFamily = SpaceMono,
+                        fontSize = 11.5.sp,
+                        color = if (draft.enoughSpace) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+
             if (!draft.isBatch) {
                 Spacer(Modifier.height(16.dp))
                 Text(
@@ -232,6 +262,86 @@ fun ExtractionSheet(
                     badge = "SAFE",
                     icon = Icons.Rounded.Layers,
                     onClick = { onMode(JobMode.SMART) },
+                )
+                if (draft.mode == JobMode.SMART && draft.canRemoveSource) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(15.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { onRemoveSource(!draft.removeSource) }
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = draft.removeSource,
+                            onCheckedChange = onRemoveSource,
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = MaterialTheme.colorScheme.primary,
+                                checkmarkColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Remove source after verification",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                            )
+                            Text(
+                                "Deletes the archive only once every entry is confirmed.",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (draft.isBatch && draft.canRemoveSource) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(15.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { onRemoveSource(!draft.removeSource) }
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = draft.removeSource,
+                        onCheckedChange = onRemoveSource,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = MaterialTheme.colorScheme.primary,
+                            checkmarkColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Remove each source after verification",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                        )
+                        Text(
+                            "Each archive is deleted only once all of its entries are confirmed.",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            if (draft.quickClean && !draft.canRemoveSource) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "This app shared the archive as read-only, so the source cannot be deleted. Hatch will unpack it and keep the original.",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -346,24 +456,33 @@ fun ExtractionSheet(
             Spacer(Modifier.height(16.dp))
             PrimaryAction(
                 text = if (draft.isBatch) {
-                    "Hatch ${draft.batchCount} archives"
+                    if (draft.removeSource) {
+                        "Extract ${draft.batchCount} & free space"
+                    } else {
+                        "Hatch ${draft.batchCount} archives"
+                    }
                 } else if (draft.mode == JobMode.RECLAIM) {
                     "Reclaim ${formatBytes(draft.selectedBytes)}"
+                } else if (draft.removeSource) {
+                    "Extract & free space"
                 } else {
                     "Start hatching"
                 },
                 onClick = onStart,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = draft.destinationTreeUri != null &&
+                    draft.enoughSpace &&
                     (!draft.needsPassword || draft.password.isNotBlank()),
                 showArrow = false,
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                if (draft.destinationTreeUri == null) {
-                    "Choose a destination to continue."
-                } else {
-                    "You can pause, resume or recover this job from the Queue."
+                when {
+                    draft.destinationTreeUri == null -> "Choose a destination to continue."
+                    !draft.enoughSpace -> {
+                        "Free up space or pick another folder. Reclaim needs less room because it consumes the ZIP as it goes."
+                    }
+                    else -> "You can pause, resume or recover this job from the Queue."
                 },
                 modifier = Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),

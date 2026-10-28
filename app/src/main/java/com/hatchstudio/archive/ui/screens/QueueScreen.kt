@@ -473,6 +473,7 @@ private fun FinishedRow(job: ExtractionJob, onRemove: () -> Unit) {
             Text(
                 buildString {
                     if (job.reclaim) append("ZIP reclaimed · ")
+                    else if (job.removeSource && job.sourceRemoved) append("Source removed · ")
                     append(formatBytes(job.completedBytes))
                     append(" · ")
                     append(timeAgo(job.updatedAt))

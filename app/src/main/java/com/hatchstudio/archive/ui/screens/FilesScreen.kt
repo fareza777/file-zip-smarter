@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DriveFileRenameOutline
@@ -96,6 +97,7 @@ fun FilesScreen(
     onOpenArchive: (SafNode) -> Unit,
     onPickLanding: () -> Unit,
     onOpenArchivePicker: () -> Unit,
+    onOpenCleaner: () -> Unit,
     onBatchExtract: (List<SafNode>) -> Unit,
     onDelete: (List<SafNode>) -> Unit,
     onRename: (SafNode, String) -> Unit,
@@ -145,6 +147,7 @@ fun FilesScreen(
                 if (selectionMode) {
                     RoundIconButton(Icons.Rounded.Close, "Clear selection", onClearSelection)
                 } else {
+                    RoundIconButton(Icons.Rounded.CleaningServices, "Space cleaner", onOpenCleaner)
                     RoundIconButton(Icons.Rounded.Search, "Search", onClick = { showSearch = !showSearch })
                     RoundIconButton(Icons.Rounded.Add, "Open archive", onOpenArchivePicker)
                     Box {
