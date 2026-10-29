@@ -12,7 +12,14 @@ import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.google.android.gms.ads.rewarded.RewardedAd
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
+import com.google.android.ump.ConsentInformation
+import com.google.android.ump.ConsentRequestParameters
+import com.google.android.ump.UserMessagingPlatform
 import com.hatchstudio.archive.BuildConfig
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Small ad coordinator. Ads are optional: entitlement checks live in the
@@ -27,11 +34,57 @@ object AdsManager {
     private var rewarded: RewardedAd? = null
     private var loadingRewarded = false
 
-    fun initialize(context: Context) {
-        runCatching { MobileAds.initialize(context) {} }
+    private val initStarted = AtomicBoolean(false)
+    private val _ready = MutableStateFlow(false)
+
+    /** True once consent allows ads and the Mobile Ads SDK is initialized. */
+    val ready: StateFlow<Boolean> = _ready.asStateFlow()
+
+    /**
+     * Gathers UMP consent (GDPR / US state privacy) and then initializes ads.
+     * Call from the launcher Activity; skip entirely when remove_ads is owned.
+     */
+    fun gatherConsent(activity: Activity) {
+        val info = UserMessagingPlatform.getConsentInformation(activity)
+        val params = ConsentRequestParameters.Builder().build()
+        runCatching {
+            info.requestConsentInfoUpdate(
+                activity,
+                params,
+                {
+                    UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) {
+                        if (info.canRequestAds()) initialize(activity)
+                    }
+                },
+                { if (info.canRequestAds()) initialize(activity) },
+            )
+        }
+        // Consent from a previous session lets ads start without waiting.
+        if (info.canRequestAds()) initialize(activity)
+    }
+
+    fun isPrivacyOptionsRequired(context: Context): Boolean =
+        UserMessagingPlatform.getConsentInformation(context).privacyOptionsRequirementStatus ==
+            ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
+
+    fun showPrivacyOptions(activity: Activity) {
+        UserMessagingPlatform.showPrivacyOptionsForm(activity) { }
+    }
+
+    private fun initialize(activity: Activity) {
+        if (!initStarted.compareAndSet(false, true)) return
+        val app = activity.applicationContext
+        runCatching {
+            MobileAds.initialize(app) {
+                _ready.value = true
+                preloadInterstitial(app)
+                preloadRewarded(app)
+            }
+        }.onFailure { initStarted.set(false) }
     }
 
     fun preloadInterstitial(context: Context) {
+        if (!_ready.value) return
         if (loadingInterstitial || interstitial != null) return
         loadingInterstitial = true
         InterstitialAd.load(
@@ -76,6 +129,7 @@ object AdsManager {
     }
 
     fun preloadRewarded(context: Context) {
+        if (!_ready.value) return
         if (loadingRewarded || rewarded != null) return
         loadingRewarded = true
         RewardedAd.load(

@@ -80,6 +80,9 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (!com.hatchstudio.archive.data.PurchaseStore(this).state.value.removeAds) {
+            com.hatchstudio.archive.ads.AdsManager.gatherConsent(this)
+        }
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
             val black = settings.theme == com.hatchstudio.archive.data.ThemeMode.BLACK

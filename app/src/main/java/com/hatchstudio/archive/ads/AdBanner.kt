@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -22,7 +24,8 @@ fun AdBanner(
     modifier: Modifier = Modifier,
     visible: Boolean,
 ) {
-    if (!visible) return
+    val adsReady by AdsManager.ready.collectAsState()
+    if (!visible || !adsReady) return
     val context = LocalContext.current
     val widthDp = (LocalConfiguration.current.screenWidthDp - 32).coerceAtLeast(280)
     Box(
