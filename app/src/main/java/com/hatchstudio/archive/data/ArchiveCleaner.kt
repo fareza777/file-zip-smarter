@@ -6,7 +6,7 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 
 /**
- * One archive that Hatch can unpack and then remove. The reported saving is the
+ * One archive that ZipHatch can unpack and then remove. The reported saving is the
  * archive's own size: extracted files are kept, so this is the storage the user
  * gets back once the source is gone.
  */

@@ -118,7 +118,7 @@ object ArchiveOpener {
         } catch (e: SecurityException) {
             throw ArchiveFailure(
                 "E_IO",
-                "Hatch lost permission to this archive. Pick it again.",
+                "ZipHatch lost permission to this archive. Pick it again.",
                 e.message,
                 e,
             )

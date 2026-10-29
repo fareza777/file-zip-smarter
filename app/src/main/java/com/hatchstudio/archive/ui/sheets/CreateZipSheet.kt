@@ -51,10 +51,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hatchstudio.archive.data.ZipCompression
 import com.hatchstudio.archive.data.ZipCreator
 import com.hatchstudio.archive.ui.ZipCreateDraft
 import com.hatchstudio.archive.ui.ZipCreateProgress
 import com.hatchstudio.archive.ui.components.PrimaryAction
+import com.hatchstudio.archive.ui.components.SegmentedControl
 import com.hatchstudio.archive.ui.format.formatBytes
 import com.hatchstudio.archive.ui.theme.Lime
 import com.hatchstudio.archive.ui.theme.SpaceMono
@@ -75,12 +77,20 @@ fun CreateZipSheet(
     onDismiss: () -> Unit,
     onName: (String) -> Unit,
     onPassword: (String) -> Unit,
+    onCompression: (ZipCompression) -> Unit,
     onSplit: (Long) -> Unit,
     onPickDestination: () -> Unit,
     onStart: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var revealPassword by remember { mutableStateOf(false) }
+    var customMb by remember {
+        mutableStateOf(
+            if (draft.splitBytes > 0 && SPLIT_OPTIONS.none { it == draft.splitBytes }) {
+                (draft.splitBytes / (1024L * 1024)).toString()
+            } else "",
+        )
+    }
     val running = progress != null
 
     ModalBottomSheet(
@@ -148,7 +158,7 @@ fun CreateZipSheet(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 enabled = !running,
-                placeholder = { Text("Hatch.zip", fontSize = 15.sp) },
+                placeholder = { Text("ZipHatch.zip", fontSize = 15.sp) },
                 textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp),
                 shape = RoundedCornerShape(15.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -250,6 +260,33 @@ fun CreateZipSheet(
 
             Spacer(Modifier.height(14.dp))
             Text(
+                "COMPRESSION",
+                fontFamily = SpaceMono,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                letterSpacing = 1.1.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(7.dp))
+            SegmentedControl(
+                options = ZipCompression.entries.map { it.label },
+                selectedIndex = ZipCompression.entries.indexOf(draft.compression).coerceAtLeast(0),
+                onSelect = { if (!running) onCompression(ZipCompression.entries[it]) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(5.dp))
+            Text(
+                when (draft.compression) {
+                    ZipCompression.STORE -> "No compression. Fastest, but the ZIP stays about the same size."
+                    ZipCompression.BALANCED -> "Default DEFLATE. A good balance of speed and size."
+                    ZipCompression.MAXIMUM -> "Smaller files, slower on large folders."
+                },
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(Modifier.height(14.dp))
+            Text(
                 "SPLIT VOLUME",
                 fontFamily = SpaceMono,
                 fontWeight = FontWeight.Bold,
@@ -275,7 +312,12 @@ fun CreateZipSheet(
                             if (selected) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
                         ),
-                        onClick = { if (!running) onSplit(bytes) },
+                        onClick = {
+                            if (!running) {
+                                customMb = ""
+                                onSplit(bytes)
+                            }
+                        },
                     ) {
                         Row(
                             Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
@@ -295,10 +337,41 @@ fun CreateZipSheet(
                     }
                 }
             }
+            Spacer(Modifier.height(7.dp))
+            OutlinedTextField(
+                value = customMb,
+                onValueChange = { raw ->
+                    val digits = raw.filter(Char::isDigit).take(5)
+                    customMb = digits
+                    digits.toLongOrNull()?.takeIf { it > 0 }?.let { mb ->
+                        onSplit(mb * 1024L * 1024L)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !running,
+                label = { Text("Custom size", fontSize = 13.sp) },
+                placeholder = { Text("e.g. 250", fontSize = 14.sp) },
+                trailingIcon = {
+                    Text(
+                        "MB",
+                        fontFamily = SpaceMono,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
+                shape = RoundedCornerShape(15.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                ),
+            )
             Spacer(Modifier.height(5.dp))
             Text(
                 if (draft.splitBytes > 0) {
-                    "Creates .z01, .z02 … plus a final .zip that Hatch and ZArchiver can join."
+                    "Creates .z01, .z02 … plus a final .zip that ZipHatch and ZArchiver can join."
                 } else {
                     "One ZIP file. Split volumes are useful for chat apps and FAT32 drives."
                 },
@@ -338,7 +411,7 @@ fun CreateZipSheet(
                 )
                 Spacer(Modifier.height(7.dp))
                 Text(
-                    "Hatch writes into private scratch space first, then moves the finished archive into your folder. Nothing is overwritten.",
+                    "ZipHatch writes into private scratch space first, then moves the finished archive into your folder. Nothing is overwritten.",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

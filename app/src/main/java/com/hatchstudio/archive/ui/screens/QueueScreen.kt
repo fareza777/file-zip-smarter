@@ -56,6 +56,10 @@ import com.hatchstudio.archive.ui.format.timeAgo
 import com.hatchstudio.archive.ui.theme.Ink
 import com.hatchstudio.archive.ui.theme.Lime
 import com.hatchstudio.archive.ui.theme.SpaceMono
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun QueueScreen(
@@ -78,8 +82,11 @@ fun QueueScreen(
     }
     val finished = jobs.filter { it.state == JobState.COMPLETED }
     val moved = jobs.filter { it.state == JobState.COMPLETED }.sumOf { it.totalBytes }
-    val reclaimed = jobs.filter { it.state == JobState.COMPLETED && it.mode == JobMode.RECLAIM }
-        .sumOf { it.archiveSize }
+    val reclaimed = jobs.filter {
+        it.state == JobState.COMPLETED &&
+            (it.mode == JobMode.RECLAIM || (it.removeSource && it.sourceRemoved))
+    }.sumOf { it.archiveSize }
+    val finishedGroups = finished.take(12).groupBy { dayLabel(it.updatedAt) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -122,6 +129,27 @@ fun QueueScreen(
             }
         }
 
+        if (jobs.isNotEmpty()) {
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HatchCard(Modifier.weight(1f)) {
+                        Column(Modifier.padding(15.dp)) {
+                            StatBlock(formatBytes(moved), "Extracted")
+                        }
+                    }
+                    HatchCard(Modifier.weight(1f)) {
+                        Column(Modifier.padding(15.dp)) {
+                            StatBlock(
+                                formatBytes(reclaimed),
+                                "Reclaimed",
+                                accent = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         if (active != null) {
             item { ActiveJobCard(active, onPause, onResume, onStop) }
         }
@@ -131,7 +159,7 @@ fun QueueScreen(
                 Spacer(Modifier.height(8.dp))
                 EmptyPanel(
                     title = "A calm queue",
-                    body = "Open an archive and Hatch will show progress, speed and reclaimed space here. Jobs survive a reboot.",
+                    body = "Open an archive and ZipHatch will show progress, speed and reclaimed space here. Jobs survive a reboot.",
                     icon = Icons.Rounded.Archive,
                 ) {
                     PrimaryAction("Open an archive", onOpenArchive, showArrow = false)
@@ -155,9 +183,9 @@ fun QueueScreen(
             }
         }
 
-        if (finished.isNotEmpty()) {
-            item { QueueLabel("Finished") }
-            items(finished.take(8), key = { it.id }) { job ->
+        finishedGroups.forEach { (day, group) ->
+            item(key = "finished-$day") { QueueLabel("Finished · $day") }
+            items(group, key = { it.id }) { job ->
                 FinishedRow(job, onRemove = { onRemove(job.id) })
             }
         }
@@ -165,24 +193,6 @@ fun QueueScreen(
         if (jobs.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HatchCard(Modifier.weight(1f)) {
-                        Column(Modifier.padding(15.dp)) {
-                            StatBlock(formatBytes(moved), "Extracted")
-                        }
-                    }
-                    HatchCard(Modifier.weight(1f)) {
-                        Column(Modifier.padding(15.dp)) {
-                            StatBlock(
-                                formatBytes(reclaimed),
-                                "Reclaimed",
-                                accent = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                    }
-                }
-            }
-            item {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -280,17 +290,17 @@ private fun ActiveJobCard(
                     progressColor = if (job.reclaim) Ink else MaterialTheme.colorScheme.primary,
                 ) {
                     Text(
-                        formatPercent(job.progress).replace("%", ""),
+                        formatPercent(job.progress),
                         fontFamily = SpaceMono,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         color = if (job.reclaim) Ink else MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }
             Spacer(Modifier.height(14.dp))
             Text(
-                if (job.state == JobState.PAUSED) "Paused" else "Hatching files",
+                if (job.state == JobState.PAUSED) "Paused" else "Extracting files",
                 style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp),
             )
             Spacer(Modifier.height(4.dp))
@@ -489,4 +499,17 @@ private fun FinishedRow(job: ExtractionJob, onRemove: () -> Unit) {
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+private fun dayLabel(millis: Long): String {
+    val now = Calendar.getInstance()
+    val then = Calendar.getInstance().apply { timeInMillis = millis }
+    val sameDay = now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
+        now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)
+    if (sameDay) return "Today"
+    now.add(Calendar.DAY_OF_YEAR, -1)
+    val yesterday = now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
+        now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)
+    if (yesterday) return "Yesterday"
+    return SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(millis))
 }

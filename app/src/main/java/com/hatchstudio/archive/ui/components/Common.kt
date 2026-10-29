@@ -123,18 +123,18 @@ fun BrandMark(
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Image(
             painter = painterResource(R.drawable.ic_splash_hatch),
-            contentDescription = "Hatch",
+            contentDescription = "ZipHatch",
             modifier = Modifier.size(39.dp),
             contentScale = ContentScale.Fit,
         )
         if (showWordmark) {
             Spacer(Modifier.width(11.dp))
             Text(
-                text = "HATCH",
+                text = "ZIPHATCH",
                 fontFamily = SpaceMono,
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                letterSpacing = 3.sp,
+                fontSize = 17.sp,
+                letterSpacing = 1.2.sp,
                 color = if (inverted) Bone else MaterialTheme.colorScheme.onBackground,
             )
         }
@@ -570,8 +570,11 @@ fun StatBlock(
     Column(modifier) {
         Text(
             text = value,
-            fontFamily = InstrumentSerif,
-            fontSize = 29.sp,
+            style = androidx.compose.ui.text.TextStyle(
+                fontFamily = InstrumentSerif,
+                fontSize = 29.sp,
+                fontFeatureSettings = "tnum",
+            ),
             color = accent,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

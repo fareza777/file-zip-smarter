@@ -196,13 +196,30 @@ private val DarkColors = darkColorScheme(
     onError = Color(0xFF690005),
 )
 
+private val BlackColors = DarkColors.copy(
+    background = Color(0xFF000000),
+    onBackground = Color(0xFFF2F0E6),
+    surface = Color(0xFF070807),
+    surfaceContainer = Color(0xFF0C0E0B),
+    surfaceContainerHigh = Color(0xFF121510),
+    surfaceContainerHighest = Color(0xFF181C16),
+    surfaceVariant = Color(0xFF141813),
+    outline = Color(0xFF2E352A),
+    outlineVariant = Color(0xFF1D221A),
+)
+
 @Composable
 fun HatchTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    blackTheme: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = when {
+            blackTheme -> BlackColors
+            darkTheme -> DarkColors
+            else -> LightColors
+        },
         typography = HatchTypography,
         content = content,
     )

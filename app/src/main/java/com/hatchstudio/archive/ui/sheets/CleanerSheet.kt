@@ -227,7 +227,7 @@ fun CleanerSheet(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Hatch writes every file first, confirms the job, and only then deletes the source archive. Keep enough free space for the unpacked files.",
+                        "ZipHatch writes every file first, confirms the job, and only then deletes the source archive. Keep enough free space for the unpacked files.",
                         modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

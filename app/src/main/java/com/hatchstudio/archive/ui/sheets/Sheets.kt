@@ -123,7 +123,7 @@ fun ExtractionSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        if (draft.isBatch) "Hatch ${draft.batchCount} archives" else "Hatch this archive",
+                        if (draft.isBatch) "Extract ${draft.batchCount} archives" else "Extract this archive",
                         style = MaterialTheme.typography.headlineMedium,
                     )
                     Spacer(Modifier.height(2.dp))
@@ -339,7 +339,7 @@ fun ExtractionSheet(
             if (draft.quickClean && !draft.canRemoveSource) {
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "This app shared the archive as read-only, so the source cannot be deleted. Hatch will unpack it and keep the original.",
+                    "This app shared the archive as read-only, so the source cannot be deleted. ZipHatch will unpack it and keep the original.",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -459,14 +459,14 @@ fun ExtractionSheet(
                     if (draft.removeSource) {
                         "Extract ${draft.batchCount} & free space"
                     } else {
-                        "Hatch ${draft.batchCount} archives"
+                        "Extract ${draft.batchCount} archives"
                     }
                 } else if (draft.mode == JobMode.RECLAIM) {
                     "Reclaim ${formatBytes(draft.selectedBytes)}"
                 } else if (draft.removeSource) {
                     "Extract & free space"
                 } else {
-                    "Start hatching"
+                    "Start extraction"
                 },
                 onClick = onStart,
                 modifier = Modifier.fillMaxWidth(),
@@ -597,11 +597,11 @@ fun OnboardingScreen(
             )
             Spacer(Modifier.height(22.dp))
             Text(
-                "Hatch\nwhat's inside.",
+                "ZipHatch.\nWhat's inside.",
                 fontFamily = SpaceGrotesk,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 52.sp,
-                lineHeight = 50.sp,
+                fontSize = 50.sp,
+                lineHeight = 48.sp,
                 letterSpacing = (-2).sp,
                 color = foreground,
             )

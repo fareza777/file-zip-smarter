@@ -8,7 +8,7 @@ import com.hatchstudio.archive.data.SafTree
 import java.io.FileNotFoundException
 
 /**
- * Turns Hatch's native entry callbacks into DocumentsContract operations and
+ * Turns ZipHatch's native entry callbacks into DocumentsContract operations and
  * durable journal commits. Files are written from the Rust buffer straight into
  * the destination provider descriptor; no temporary copy of the entry exists.
  */
@@ -100,7 +100,7 @@ class SafExtractionSink(
             currentWritten = 0
             return pfd.detachFd()
         } catch (e: SecurityException) {
-            lastError = "Hatch lost write access to the destination folder. Choose it again."
+            lastError = "ZipHatch lost write access to the destination folder. Choose it again."
             Log.w(TAG, "SAF permission failure", e)
             return -3
         } catch (e: FileNotFoundException) {
@@ -128,7 +128,7 @@ class SafExtractionSink(
             onProgress(journal.completed.size, baseBytes)
             true
         } catch (e: Exception) {
-            lastError = "The extraction journal could not be saved. Hatch stopped before removing any archive data."
+            lastError = "The extraction journal could not be saved. ZipHatch stopped before removing any archive data."
             Log.e(TAG, "Journal write failed", e)
             false
         }

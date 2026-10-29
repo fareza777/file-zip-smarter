@@ -12,6 +12,7 @@ import com.hatchstudio.archive.core.ArchiveFailure
 import com.hatchstudio.archive.core.ArchiveOpener
 import com.hatchstudio.archive.core.ArchiveSource
 import com.hatchstudio.archive.core.NativeEngine
+import com.hatchstudio.archive.core.OpenedArchive
 import com.hatchstudio.archive.ads.AdsManager
 import com.hatchstudio.archive.data.ArchiveCleaner
 import com.hatchstudio.archive.data.BillingManager
@@ -45,6 +46,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
@@ -98,6 +101,9 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
     private val _preview = MutableStateFlow<EntryPreview?>(null)
     val preview: StateFlow<EntryPreview?> = _preview.asStateFlow()
 
+    private val _thumbnails = MutableStateFlow<Map<Int, android.graphics.Bitmap>>(emptyMap())
+    val thumbnails: StateFlow<Map<Int, android.graphics.Bitmap>> = _thumbnails.asStateFlow()
+
     private val _zipDraft = MutableStateFlow<ZipCreateDraft?>(null)
     val zipDraft: StateFlow<ZipCreateDraft?> = _zipDraft.asStateFlow()
 
@@ -108,12 +114,14 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
     val showSplash: StateFlow<Boolean> = _showSplash.asStateFlow()
 
     private var cleanerScan: Job? = null
+    private var thumbJob: Job? = null
     private var tree: SafTree? = null
     private var currentArchive: CurrentArchive? = null
     private var pendingSource: ArchiveSource? = null
     private var pendingQuickClean = false
     private var batchSources: List<BatchItem>? = null
     private val sessionPasswords = ConcurrentHashMap<String, String>()
+    private val archiveMutex = Mutex()
     private val adSeenJobs = HashSet<String>()
     private var adFinishedCount = 0
     private var adBaselineReady = false
@@ -179,7 +187,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
             settingsStore.clearLanding()
             _files.value = FilesUiState(
                 landingSet = false,
-                error = "Hatch lost access to the landing folder. Choose it again.",
+                error = "ZipHatch lost access to the landing folder. Choose it again.",
             )
         }
     }
@@ -371,6 +379,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
 
     fun previewEntry(index: Int) {
         val current = currentArchive ?: return
+        thumbJob?.cancel()
         val entry = current.opened.entries.firstOrNull { it.index == index && !it.isDirectory } ?: return
         if (!entry.canExtract) {
             _events.tryEmit(UiEvent.Message("That entry is blocked for safety."))
@@ -393,13 +402,15 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val dir = File(getApplication<Application>().cacheDir, "hatch/preview").apply { mkdirs() }
-                val bytes = NativeEngine.preview(
-                    handle = current.opened.handle,
-                    index = index,
-                    password = current.password,
-                    tempDir = dir.absolutePath,
-                    maxBytes = PREVIEW_MAX_BYTES,
-                )
+                val bytes = archiveMutex.withLock {
+                    NativeEngine.preview(
+                        handle = current.opened.handle,
+                        index = index,
+                        password = current.password,
+                        tempDir = dir.absolutePath,
+                        maxBytes = PREVIEW_MAX_BYTES,
+                    )
+                }
                 val shown = when (kind) {
                     PreviewKind.IMAGE -> {
                         val bitmap = decodePreview(bytes)
@@ -442,31 +453,42 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         _preview.value = null
     }
 
-    fun shareEntry(index: Int) {
+    fun shareSelected() {
         val current = currentArchive ?: return
-        val entry = current.opened.entries.firstOrNull { it.index == index && !it.isDirectory } ?: return
-        if (!entry.canExtract) {
-            _events.tryEmit(UiEvent.Message("That entry is blocked for safety."))
+        thumbJob?.cancel()
+        val state = _inspector.value ?: return
+        val entries = state.entries.filter {
+            it.index in state.selected && !it.isDirectory && it.canExtract
+        }
+        if (entries.isEmpty()) {
+            _events.tryEmit(UiEvent.Message("Choose at least one file to share."))
             return
         }
-        _events.tryEmit(UiEvent.Message("Preparing ${entry.displayName} to share…"))
+        _events.tryEmit(
+            UiEvent.Message(
+                if (entries.size == 1) "Preparing ${entries.first().displayName} to share…"
+                else "Preparing ${entries.size} files to share…",
+            ),
+        )
         viewModelScope.launch {
             try {
-                val file = withContext(Dispatchers.IO) {
-                    EntrySharer.stage(
-                        context = getApplication(),
-                        handle = current.opened.handle,
-                        password = current.password,
-                        entry = entry,
-                    )
+                val files = withContext(Dispatchers.IO) {
+                    archiveMutex.withLock {
+                        EntrySharer.stage(
+                            context = getApplication(),
+                            handle = current.opened.handle,
+                            password = current.password,
+                            entries = entries,
+                        )
+                    }
                 }
                 val sent = EntrySharer.send(
                     context = getApplication(),
-                    file = file,
-                    mimeType = SafTree.mimeFor(entry.displayName),
+                    files = files,
+                    mimeTypes = entries.map { SafTree.mimeFor(it.displayName) },
                 )
                 if (!sent) {
-                    _events.tryEmit(UiEvent.Message("No app on this device can receive that file."))
+                    _events.tryEmit(UiEvent.Message("No app on this device can receive those files."))
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -474,6 +496,52 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
                 _events.tryEmit(UiEvent.Message(ArchiveFailure.from(e).userMessage))
             }
         }
+    }
+
+    private fun loadInspectorThumbnails(opened: OpenedArchive, password: String?) {
+        _thumbnails.value = emptyMap()
+        thumbJob?.cancel()
+        val targets = opened.entries
+            .filter { entry ->
+                !entry.isDirectory && entry.canExtract &&
+                    entry.category == com.hatchstudio.archive.core.FileCategory.Image &&
+                    entry.size in 1..THUMB_MAX_BYTES
+            }
+            .take(12)
+        if (targets.isEmpty()) return
+        thumbJob = viewModelScope.launch(Dispatchers.IO) {
+            val dir = File(getApplication<Application>().cacheDir, "hatch/thumbs").apply { mkdirs() }
+            for (entry in targets) {
+                if (currentArchive?.opened?.handle != opened.handle) return@launch
+                val bytes = runCatching {
+                    archiveMutex.withLock {
+                        NativeEngine.preview(
+                            handle = opened.handle,
+                            index = entry.index,
+                            password = password,
+                            tempDir = dir.absolutePath,
+                            maxBytes = THUMB_MAX_BYTES,
+                        )
+                    }
+                }.getOrNull() ?: continue
+                val bitmap = decodeThumbnail(bytes) ?: continue
+                _thumbnails.update { it + (entry.index to bitmap) }
+            }
+        }
+    }
+
+    private fun decodeThumbnail(bytes: ByteArray): android.graphics.Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > 160 || bounds.outHeight / sample > 160) sample *= 2
+        return BitmapFactory.decodeByteArray(
+            bytes,
+            0,
+            bytes.size,
+            BitmapFactory.Options().apply { inSampleSize = sample },
+        )
     }
 
     private fun decodePreview(bytes: ByteArray): android.graphics.Bitmap? {
@@ -635,6 +703,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
                 canReclaim = opened.canReclaim,
                 passwordProtected = opened.info.encryptedCount > 0 || cached != null,
             )
+            loadInspectorThumbnails(opened, cached)
             pendingSource = null
             _openPassword.value = null
             _loading.value = null
@@ -693,6 +762,8 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeInspector(deleteStaged: Boolean = true) {
         dismissPreview()
+        thumbJob?.cancel()
+        _thumbnails.value = emptyMap()
         currentArchive?.opened?.close()
         if (deleteStaged) currentArchive?.ownedStaged?.let(::deleteOwned)
         currentArchive = null
@@ -797,7 +868,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         }
         val skipped = nodes.count { !it.isDirectory && isSplitPart(it.name) }
         if (skipped > 0) {
-            _events.tryEmit(UiEvent.Message("Open split archives one at a time so Hatch can gather all parts."))
+            _events.tryEmit(UiEvent.Message("Open split archives one at a time so ZipHatch can gather all parts."))
         }
         if (usable.isEmpty()) {
             _events.tryEmit(UiEvent.Message("Select one or more whole archives to batch extract."))
@@ -851,7 +922,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
         _zipDraft.value = ZipCreateDraft(
             nodes = nodes,
-            name = "Hatch-$stamp.zip",
+            name = "ZipHatch-$stamp.zip",
             destinationTreeUri = safTree.treeUri,
             destinationDocId = docId,
             destinationLabel = label,
@@ -879,6 +950,10 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setZipSplit(bytes: Long) {
         _zipDraft.update { it?.copy(splitBytes = bytes) }
+    }
+
+    fun setZipCompression(value: com.hatchstudio.archive.data.ZipCompression) {
+        _zipDraft.update { it?.copy(compression = value) }
     }
 
     fun setZipDestination(uri: Uri) {
@@ -932,6 +1007,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
                     request = ZipCreator.Request(
                         baseName = name,
                         password = draft.password.takeIf { it.isNotBlank() },
+                        compression = draft.compression,
                         splitBytes = draft.splitBytes,
                         destinationTreeUri = treeUri.toString(),
                         destinationDocId = docId,
@@ -1071,7 +1147,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         }
         val password = current.password ?: draftState.password.takeIf { it.isNotBlank() }
         if (draftState.needsPassword && password.isNullOrBlank()) {
-            _events.tryEmit(UiEvent.Message("Enter the archive password before hatching."))
+            _events.tryEmit(UiEvent.Message("Enter the archive password before extracting."))
             return
         }
         val reclaim = draftState.mode == JobMode.RECLAIM && draftState.canReclaim
@@ -1243,6 +1319,7 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         private const val PREVIEW_MAX_BYTES = 24L * 1024 * 1024
+        private const val THUMB_MAX_BYTES = 4L * 1024 * 1024
         private const val PREVIEW_IMAGE_EDGE = 2048
         private const val PREVIEW_TEXT_BYTES = 256 * 1024
         private const val PREVIEW_TEXT_CHARS = 120_000

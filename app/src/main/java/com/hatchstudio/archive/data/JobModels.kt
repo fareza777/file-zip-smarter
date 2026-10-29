@@ -124,7 +124,7 @@ data class ExtractionJob(
                     .takeIf { it.isNotBlank() && it != "null" },
                 destinationTreeUri = tree,
                 destinationLabel = o.optString("destinationLabel", "Folder"),
-                outputFolder = o.optString("outputFolder", "Hatch"),
+                outputFolder = o.optString("outputFolder", "ZipHatch"),
                 mode = runCatching { JobMode.valueOf(o.optString("mode")) }.getOrDefault(JobMode.SMART),
                 conflict = runCatching { ConflictPolicy.valueOf(o.optString("conflict")) }
                     .getOrDefault(ConflictPolicy.REPLACE),

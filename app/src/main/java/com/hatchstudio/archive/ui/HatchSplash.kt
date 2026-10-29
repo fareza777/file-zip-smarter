@@ -122,19 +122,19 @@ fun HatchLaunchSplash(onDone: () -> Unit) {
             ) {
                 Image(
                     painter = painterResource(R.drawable.ic_splash_hatch),
-                    contentDescription = "Hatch",
+                    contentDescription = "ZipHatch",
                     modifier = Modifier.size(112.dp),
                     contentScale = ContentScale.Fit,
                 )
             }
             Spacer(Modifier.height(28.dp))
             Text(
-                "HATCH",
+                "ZIPHATCH",
                 modifier = Modifier.alpha(reveal),
                 fontFamily = SpaceMono,
                 fontWeight = FontWeight.Bold,
-                fontSize = 29.sp,
-                letterSpacing = 8.sp,
+                fontSize = 26.sp,
+                letterSpacing = 4.2.sp,
                 color = Ink,
             )
             Spacer(Modifier.height(10.dp))

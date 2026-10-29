@@ -94,7 +94,7 @@ class ExtractionService : Service() {
 
         if (job == null) {
             return builder
-                .setContentTitle("Hatch is preparing")
+                .setContentTitle("ZipHatch is preparing")
                 .setContentText("Getting the archive ready…")
                 .setProgress(0, 0, true)
                 .build()
@@ -146,7 +146,7 @@ class ExtractionService : Service() {
             "Extraction",
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Progress for Hatch archive extraction"
+            description = "Progress for ZipHatch archive extraction"
             setShowBadge(false)
             enableVibration(false)
         }

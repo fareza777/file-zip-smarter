@@ -82,12 +82,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
+            val black = settings.theme == com.hatchstudio.archive.data.ThemeMode.BLACK
             val dark = when (settings.theme) {
                 com.hatchstudio.archive.data.ThemeMode.SYSTEM -> isSystemInDarkTheme()
                 com.hatchstudio.archive.data.ThemeMode.LIGHT -> false
                 com.hatchstudio.archive.data.ThemeMode.DARK -> true
+                com.hatchstudio.archive.data.ThemeMode.BLACK -> true
             }
-            HatchTheme(darkTheme = dark) {
+            HatchTheme(darkTheme = dark, blackTheme = black) {
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
                 SideEffect {
                     controller.isAppearanceLightStatusBars = !dark
@@ -136,6 +138,7 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
     val jobs by vm.jobs.collectAsStateWithLifecycle()
     val recents by vm.recents.collectAsStateWithLifecycle()
     val inspector by vm.inspector.collectAsStateWithLifecycle()
+    val thumbnails by vm.thumbnails.collectAsStateWithLifecycle()
     val draft by vm.draft.collectAsStateWithLifecycle()
     val openPassword by vm.openPassword.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
@@ -363,7 +366,8 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
                                     onClearSelection = vm::clearEntrySelection,
                                     onPrepare = vm::prepareExtraction,
                                     onPreview = vm::previewEntry,
-                                    onShare = vm::shareEntry,
+                                    onShare = vm::shareSelected,
+                                    thumbnails = thumbnails,
                                 )
                             }
                         }
@@ -428,6 +432,7 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
             onDismiss = vm::dismissZipDraft,
             onName = vm::setZipName,
             onPassword = vm::setZipPassword,
+            onCompression = vm::setZipCompression,
             onSplit = vm::setZipSplit,
             onPickDestination = {
                 pickingZipDestination = true

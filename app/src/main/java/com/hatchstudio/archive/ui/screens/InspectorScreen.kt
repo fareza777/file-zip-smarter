@@ -1,6 +1,7 @@
 package com.hatchstudio.archive.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +46,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import android.graphics.Bitmap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +58,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,6 +78,7 @@ import com.hatchstudio.archive.ui.components.CategoryIcon
 import com.hatchstudio.archive.ui.components.FormatBadge
 import com.hatchstudio.archive.ui.components.HatchCard
 import com.hatchstudio.archive.ui.components.LabelValueRow
+import com.hatchstudio.archive.ui.components.PrimaryAction
 import com.hatchstudio.archive.ui.components.SegmentedControl
 import com.hatchstudio.archive.ui.format.formatBytes
 import com.hatchstudio.archive.ui.format.formatPercent
@@ -106,7 +111,8 @@ fun InspectorScreen(
     onClearSelection: () -> Unit,
     onPrepare: () -> Unit,
     onPreview: (Int) -> Unit,
-    onShare: (Int) -> Unit,
+    onShare: () -> Unit,
+    thumbnails: Map<Int, Bitmap> = emptyMap(),
 ) {
     var showReclaimInfo by remember { mutableStateOf(false) }
     val info = state.info
@@ -163,6 +169,7 @@ fun InspectorScreen(
             ContentsTab(
                 state = state,
                 lens = lens,
+                thumbnails = thumbnails,
                 modifier = Modifier.weight(1f),
                 onQuery = onQuery,
                 onFilter = onFilter,
@@ -178,6 +185,7 @@ fun InspectorScreen(
                 state = state,
                 modifier = Modifier.weight(1f),
                 onReclaimInfo = { showReclaimInfo = true },
+                onPrepare = onPrepare,
             )
         }
 
@@ -198,9 +206,14 @@ fun InspectorScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (state.selected.isEmpty()) "Nothing selected"
-                            else "${state.selected.size} selected",
+                            when {
+                                state.selected.isEmpty() -> "Nothing selected"
+                                state.allSelected -> "All ${state.selected.size} files selected"
+                                else -> "${state.selected.size} selected"
+                            },
                             style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             if (state.selected.isEmpty()) "Tap a file to choose it"
@@ -209,18 +222,20 @@ fun InspectorScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (previewable != null) {
+                    if (state.selected.isNotEmpty()) {
                         IconButton(
-                            onClick = { onShare(previewable.index) },
+                            onClick = onShare,
                             modifier = Modifier.size(46.dp),
                         ) {
                             Icon(
                                 Icons.Rounded.Share,
-                                "Share this file",
+                                if (state.selected.size == 1) "Share this file" else "Share selected files",
                                 modifier = Modifier.size(21.dp),
                                 tint = MaterialTheme.colorScheme.onSurface,
                             )
                         }
+                    }
+                    if (previewable != null) {
                         IconButton(
                             onClick = { onPreview(previewable.index) },
                             modifier = Modifier.size(46.dp),
@@ -251,7 +266,7 @@ fun InspectorScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                "Extract",
+                                if (state.allSelected) "Extract all" else "Extract",
                                 style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp),
                             )
                             Spacer(Modifier.width(9.dp))
@@ -270,12 +285,12 @@ fun InspectorScreen(
             text = {
                 Column {
                     Text(
-                        "Hatch reads a ZIP from its last entry backwards and truncates the source archive after each verified write. Your extracted files grow while the archive shrinks, so peak extra space is about the largest single file instead of the whole unpacked set.",
+                        "ZipHatch reads a ZIP from its last entry backwards and truncates the source archive after each verified write. Your extracted files grow while the archive shrinks, so peak extra space is about the largest single file instead of the whole unpacked set.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "Android SAF rarely exposes a writable file descriptor for a ZIP. When that is unavailable, Hatch stages the archive privately and reclaims the private copy, then removes the original only if you granted delete access. Otherwise it falls back to Smart extraction and never touches the source.",
+                        "Android SAF rarely exposes a writable file descriptor for a ZIP. When that is unavailable, ZipHatch stages the archive privately and reclaims the private copy, then removes the original only if you granted delete access. Otherwise it falls back to Smart extraction and never touches the source.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Spacer(Modifier.height(10.dp))
@@ -294,6 +309,7 @@ fun InspectorScreen(
 private fun ContentsTab(
     state: InspectorState,
     lens: StorageLens,
+    thumbnails: Map<Int, Bitmap>,
     modifier: Modifier = Modifier,
     onQuery: (String) -> Unit,
     onFilter: (EntryFilter) -> Unit,
@@ -396,11 +412,11 @@ private fun ContentsTab(
         if (state.canReclaim) {
             ReclaimStrip(
                 title = "Reclaim ready",
-                body = "Extract in place and delete this ZIP as it empties. Needs about ${formatBytes(lens.reclaimPeakEstimate)} extra.",
+                body = "Delete the ZIP as it empties · +${formatBytes(lens.reclaimPeakEstimate)} peak",
                 onClick = onReclaimInfo,
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
         }
 
         LazyColumn(
@@ -417,6 +433,7 @@ private fun ContentsTab(
                 EntryRow(
                     entry = entry,
                     selected = entry.index in state.selected,
+                    thumbnail = thumbnails[entry.index],
                     onToggle = { onToggle(entry.index) },
                 )
             }
@@ -437,27 +454,32 @@ private fun ReclaimStrip(
             .clip(RoundedCornerShape(16.dp))
             .background(Lime.copy(alpha = 0.55f))
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.Shield, null, modifier = Modifier.size(19.dp), tint = Ink)
-        Spacer(Modifier.width(9.dp))
+        Icon(Icons.Rounded.Shield, null, modifier = Modifier.size(18.dp), tint = Ink)
+        Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall.copy(fontSize = 14.sp), color = Ink)
+            Text(title, style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.5.sp), color = Ink)
             Text(
                 body,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
                 color = Ink.copy(alpha = 0.7f),
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Icon(Icons.Rounded.Info, null, modifier = Modifier.size(18.dp), tint = Ink.copy(alpha = 0.6f))
+        Icon(Icons.Rounded.Info, null, modifier = Modifier.size(17.dp), tint = Ink.copy(alpha = 0.6f))
     }
 }
 
 @Composable
-private fun EntryRow(entry: ArchiveEntry, selected: Boolean, onToggle: () -> Unit) {
+private fun EntryRow(
+    entry: ArchiveEntry,
+    selected: Boolean,
+    thumbnail: Bitmap?,
+    onToggle: () -> Unit,
+) {
     val enabled = entry.canExtract
     Row(
         modifier = Modifier
@@ -499,15 +521,20 @@ private fun EntryRow(entry: ArchiveEntry, selected: Boolean, onToggle: () -> Uni
         Spacer(Modifier.width(10.dp))
         Box(
             Modifier
-                .size(35.dp)
+                .size(38.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
             contentAlignment = Alignment.Center,
         ) {
-            if (entry.isDirectory) {
-                Icon(Icons.Rounded.Folder, null, modifier = Modifier.size(18.dp))
-            } else {
-                CategoryIcon(entry.category, modifier = Modifier.size(17.dp))
+            when {
+                entry.isDirectory -> Icon(Icons.Rounded.Folder, null, modifier = Modifier.size(18.dp))
+                thumbnail != null -> Image(
+                    bitmap = thumbnail.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+                else -> CategoryIcon(entry.category, modifier = Modifier.size(17.dp))
             }
         }
         Spacer(Modifier.width(10.dp))
@@ -572,6 +599,7 @@ private fun LensTab(
     state: InspectorState,
     modifier: Modifier = Modifier,
     onReclaimInfo: () -> Unit,
+    onPrepare: () -> Unit,
 ) {
     val largest = lens.largest.firstOrNull()?.size ?: 0L
     val smartPeak = info.totalSize
@@ -661,7 +689,7 @@ private fun LensTab(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         if (info.reclaim.eligible) {
-                            "Hatch can consume this ZIP while unpacking. The source ${
+                            "ZipHatch can consume this ZIP while unpacking. The source ${
                                 formatBytes(info.archiveSize)
                             } is returned to you."
                         } else {
@@ -698,6 +726,14 @@ private fun LensTab(
                             modifier = Modifier.clickable(onClick = onReclaimInfo),
                             style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.5.sp),
                             color = Ink,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        PrimaryAction(
+                            text = "Reclaim this ZIP",
+                            onClick = onPrepare,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = state.selected.isNotEmpty(),
+                            showArrow = false,
                         )
                     }
                 }
@@ -799,7 +835,7 @@ private fun LensTab(
                 )
                 Spacer(Modifier.width(9.dp))
                 Text(
-                    "Hatch validates every path and never follows links outside the destination. Unsafe entries stay unchecked.",
+                    "ZipHatch validates every path and never follows links outside the destination. Unsafe entries stay unchecked.",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

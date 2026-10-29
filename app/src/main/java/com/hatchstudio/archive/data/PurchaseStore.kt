@@ -14,7 +14,7 @@ data class Entitlements(
 }
 
 /**
- * Ad-free entitlement is kept on-device, matching Hatch's account-free model.
+ * Ad-free entitlement is kept on-device, matching ZipHatch's account-free model.
  * Play Billing is the source of truth for the one-time purchase; the rewarded
  * window is intentionally short and local.
  */

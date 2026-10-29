@@ -74,7 +74,7 @@ object Archives {
             .replace('\\', '_')
             .trim()
             .take(80)
-            .ifBlank { "Hatch" }
+            .ifBlank { "ZipHatch" }
     }
 
     fun isArchiveName(name: String): Boolean {

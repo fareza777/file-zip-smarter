@@ -219,7 +219,7 @@ fun FilesScreen(
         if (!state.landingSet) {
             Spacer(Modifier.height(24.dp))
             EmptyPanel(
-                title = "Give Hatch a landing folder",
+                title = "Give ZipHatch a landing folder",
                 body = "Pick a folder in Downloads or Documents. Every extraction and the file browser stay inside the access you grant.",
                 icon = Icons.Rounded.FolderOpen,
             ) {
@@ -663,7 +663,7 @@ private fun SelectionBar(
                         Icon(Icons.Rounded.Archive, null, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            if (archives.size == 1) "Hatch" else "Hatch ${archives.size}",
+                            if (archives.size == 1) "ZipHatch" else "ZipHatch ${archives.size}",
                             style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
                         )
                     }

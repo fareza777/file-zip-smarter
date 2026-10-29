@@ -1,14 +1,18 @@
-# Hatch
+# ZipHatch
 
 A premium, local-first archive extractor for Android, built around one idea:
 **unpack a ZIP without keeping a second copy of it.**
 
-Hatch pairs a Rust extraction core with Jetpack Compose and Material 3. The
+ZipHatch pairs a Rust extraction core with Jetpack Compose and Material 3. The
 default look is **Paper**, a warm light theme; Ink (dark) and system Auto are
 one tap away in Studio.
 
+ZipHatch is the product and storefront name. The Android application ID
+(`com.hatchstudio.archive`) and the native `hatch_core` library keep their
+original identifiers so existing installs upgrade in place.
+
 <p>
-  <img src="docs/screenshots/home.jpg" width="230" alt="Hatch home screen" />
+  <img src="docs/screenshots/home.jpg" width="230" alt="ZipHatch home screen" />
   <img src="docs/screenshots/inspector.jpg" width="230" alt="Archive inspector with reclaim readiness" />
   <img src="docs/screenshots/reclaim-mode.jpg" width="230" alt="Reclaim selected as the default extraction mode" />
   <img src="docs/screenshots/queue-paused.jpg" width="230" alt="Paused reclaim job with resume" />
@@ -21,17 +25,17 @@ one tap away in Studio.
   largest selected file instead of the whole archive. The source is truncated
   or deleted only after every entry is written and verified.
 - **Safe fallback.** If an archive is read-only, encrypted, split, or contains
-  links/unsafe paths, Hatch falls back to smart extraction: fresh files, source
+  links/unsafe paths, ZipHatch falls back to smart extraction: fresh files, source
   untouched.
 - **Formats.** ZIP, RAR / RAR5, 7z, TAR, TAR.GZ, GZIP, XZ, Zstandard and
   Bzip2, including compressed TAR sets (`.tar.xz`, `.tar.zst`, `.tar.bz2`).
   ZIP, RAR and 7z passwords are supported.
 - **Create ZIP.** Zip a folder or a multi-selection straight into the granted
-  folder: DEFLATE by default, an optional AES-256 password that opens in
-  ZArchiver, 7-Zip and WinRAR, and split volumes (`.z01`, `.z02` … plus the
-  final `.zip`). Volumes are written into private cache first and copied into
-  the destination only once the archive is complete, so a failed run can never
-  leave a broken file behind.
+  folder: store, balanced DEFLATE or maximum compression, an optional AES-256
+  password that opens in ZArchiver, 7-Zip and WinRAR, and split volumes (`.z01`,
+  `.z02` … plus the final `.zip`) with preset or custom sizes. Volumes are
+  written into private cache first and copied into the destination only once the
+  archive is complete, so a failed run can never leave a broken file behind.
 - **Optional ads, one-time unlock.** A banner on Home, a sparse interstitial
   after every third completed job, and an opt-in rewarded video that grants
   24 hours ad-free. **Remove ads** is a one-time $4.99 purchase; once owned,
@@ -47,16 +51,16 @@ one tap away in Studio.
   archives in one batch. Split sets are skipped. A source is deleted only after
   every entry is confirmed; partial selections keep the archive.
 - **Quick clean from the share sheet.** Share an archive from another app to
-  Hatch and land directly on the extraction sheet with “Extract & free space”
+  ZipHatch and land directly on the extraction sheet with “Extract & free space”
   preselected when the source is writable.
 - **Entry preview.** Look inside an archive before extracting: images render
   inline, text opens in a private reader, and video/PDF/audio can be handed to
   another app. Previews are capped at 24 MB, use private cache only, and respect
   archive passwords.
-- **Share one entry.** Select a single file in the inspector and tap Share:
-  Hatch stages just that entry in private cache and opens the Android share
-  sheet, so a file can go to WhatsApp or Drive without extracting the archive
-  or leaving a copy in your folder.
+- **Share from inside an archive.** Select one or several files in the
+  inspector and tap Share: ZipHatch stages only those entries in private cache and
+  opens the Android share sheet, so files can go to WhatsApp or Drive without
+  extracting the archive or leaving a copy in your folder.
 - **Free-space preflight.** The destination’s free bytes are checked before a
   job starts and again per queued archive. `ENOSPC` becomes an actionable
   message instead of a generic failure.
@@ -69,15 +73,18 @@ one tap away in Studio.
 - **Password vault (optional).** Archive passwords encrypted with an Android
   Keystore AES-GCM key. Nothing leaves the device.
 - **Premium UI.** Material 3, large type, generous spacing, hand-built type
-  scale, no nested-card clutter, no dead screens. A custom launch splash
-  stages the Hatch mark over a soft lime-to-sea gradient, then hands off to
+  scale, no nested-card clutter, no dead screens. Paper, Ink, true-black and
+  Auto themes; Home collapses its hero for returning users and surfaces a
+  paused or failed job; the inspector shows image thumbnails and a one-line
+  reclaim strip; Queue groups finished jobs by day. A custom launch splash
+  stages the ZipHatch mark over a soft lime-to-sea gradient, then hands off to
   onboarding or Home without a white flash.
 
-Hatch requests no storage permission: all file access goes through the Storage
+ZipHatch requests no storage permission: all file access goes through the Storage
 Access Framework with a folder the user explicitly grants. Archives, entry
 names, previews and saved passwords never leave the device. The `INTERNET` and
 `ACCESS_NETWORK_STATE` permissions exist only for the Google Mobile Ads SDK and
-Google Play billing; Hatch itself has no accounts, no analytics and no
+Google Play billing; ZipHatch itself has no accounts, no analytics and no
 first-party network calls.
 
 ## Architecture
@@ -146,7 +153,7 @@ R8 minification and resource shrinking.
 
 ### Ads and the Remove Ads purchase
 
-Hatch ships with Google's public test ad units, so a debug build runs without an
+ZipHatch ships with Google's public test ad units, so a debug build runs without an
 AdMob account. Override them in `gradle.properties` (or your
 `~/.gradle/gradle.properties`) before a monetised release:
 
@@ -181,18 +188,21 @@ plus a Pixel-class emulator, with release builds:
 | 3-volume RAR (`split.part1..3.rar`) | 1.2 MB entry, MD5 identical to source |
 | Password RAR | Unlocked and extracted |
 | ZIP/TAR inspector, selection, Storage Lens | Verified |
-| Paper/Ink/Auto themes and all four tabs | Verified at 1080×2400 |
+| Paper/Ink/Black/Auto themes and all four tabs | Verified on the Redmi Note 11 |
+| Compact Home for returning users, grouped Queue, thumbnails | Verified on the Redmi Note 11 |
 | Rust core tests | 9 passed, 0 failed |
 | Space cleaner scan, 2-archive batch, source removal | 6 archives found; ZIP source deleted after all entries confirmed; outputs complete |
 | Inline text and image preview | Verified on emulator, API 36 |
 | Share one entry from inside a ZIP | Share sheet opened on the Redmi Note 11 with `notes.txt` (WhatsApp, Quick Share, ChatGPT listed); nothing written to the landing folder |
+| Share three entries in one action | Share sheet titled “Share 3 files” with the staged PNG, CSV and TXT |
 | Share-sheet quick clean (`ACTION_SEND`) | Sheet opens with Extract & free space; emulator, debug grant |
 | Free-space preflight | Destination free/needed shown in sheet; job-level guard compiled |
 | XZ, Zstandard, Bzip2, `.tar.xz` / `.tar.zst` / `.tar.bz2` | All listed and extracted by the Rust host probe |
 | Create ZIP from a folder selection | 3 entries written into the granted folder |
+| Compression options and custom split | Sheet renders Store/Balanced/Max plus a custom MB field; a Balanced ZIP reopened with `unzip -t` |
 | Create ZIP with AES-256 password | Reopened with zip4j: `encrypted=true`, AES entries, correct password extracts |
 | Create split ZIP | Multi-disk end record written and normalizer unit-tested (2 tests, 0 failures) |
-| Custom Hatch splash and onboarding | Verified on emulator, API 36, 1080×2400 |
+| Custom ZipHatch splash and onboarding | Verified on emulator, API 36, 1080×2400 |
 
 Post-update and cold-start runs were also checked: the SAF grant survives an
 APK update and the reclaim write path keeps working.
@@ -204,7 +214,7 @@ APK update and the reclaim write path keeps working.
 - `versionCode 3`, `versionName 1.2.0`; bump both for every upload.
 - 64-bit ARM is included for devices; x86_64 is for emulators.
 - Complete **Data safety** for the Google Mobile Ads SDK (device identifiers,
-  approximate location and ad interactions may be collected by Google). Hatch
+  approximate location and ad interactions may be collected by Google). ZipHatch
   itself collects nothing.
 - Provide a privacy policy URL that names AdMob and Google Play billing.
 - Declare **contains ads** and **in-app purchases** in the content rating and
@@ -217,14 +227,14 @@ APK update and the reclaim write path keeps working.
 
 - **UnRAR** — `core/vendor/unrar_sys/vendor/unrar/license.txt`. UnRAR is
   freeware, **not OSI open source**. It may be used to extract RAR archives, but
-  its license forbids using the code to build a RAR compressor. Hatch is
+  its license forbids using the code to build a RAR compressor. ZipHatch is
   extraction-only and never creates RAR files. The notice ships with the app.
 - **Fonts** — Space Grotesk, Space Mono and Instrument Serif are SIL Open Font
   License 1.1; license texts are in `app/src/main/assets/licenses/`.
 - **Rust crates** — `zip`, `unrar`, `unrar_sys`, `sevenz-rust2`, `jni`,
   `crc32fast` and the rest keep their upstream MIT/Apache-2.0 licenses; see
   `core/Cargo.lock` and the in-app licenses screen.
-- **Hatch application code** — no license has been chosen for the original
+- **ZipHatch application code** — no license has been chosen for the original
   code in this repository. Add one before accepting outside contributions.
 
 ## Known limitations
@@ -233,7 +243,7 @@ APK update and the reclaim write path keeps working.
   symlinks, unsafe paths, read-only documents and partial selections.
 - RAR, 7z and multipart inputs are always staged or extracted through the
   normal path; only ZIP gets zero-copy reclaim.
-- Archive creation is ZIP-only; Hatch never writes RAR, 7z, TAR or compressed
+- Archive creation is ZIP-only; ZipHatch never writes RAR, 7z, TAR or compressed
   TAR files.
 - Split creation writes classic `.z01`…`.zip` sets. A volume size larger than
   the payload produces a single `.zip`, which is expected behaviour, not a
@@ -242,6 +252,7 @@ APK update and the reclaim write path keeps working.
   but a previously cached banner may stay on screen until Home recomposes.
 - Inline preview is capped at 24 MB per entry. Larger images, video or PDFs
   report “too large for a quick preview” and should be extracted. Sharing is
-  not capped; the staged copy is replaced on the next share.
+  not capped; staged copies are replaced on the next share and need free cache
+  space while the share sheet is open.
 - Removing the source requires write access to that archive. Read-only shares
-  still extract normally, but Hatch keeps the original and explains why.
+  still extract normally, but ZipHatch keeps the original and explains why.

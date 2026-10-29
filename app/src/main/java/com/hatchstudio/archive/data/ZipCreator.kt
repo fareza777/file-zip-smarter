@@ -19,6 +19,12 @@ import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 
+enum class ZipCompression(val label: String) {
+    STORE("Store"),
+    BALANCED("Balanced"),
+    MAXIMUM("Max"),
+}
+
 /**
  * Builds a standards-compliant ZIP (optional AES-256 password, optional split
  * volumes) from SAF nodes. The archive is written to private cache first so a
@@ -29,6 +35,7 @@ object ZipCreator {
     data class Request(
         val baseName: String,
         val password: String?,
+        val compression: ZipCompression = ZipCompression.BALANCED,
         val splitBytes: Long,
         val destinationTreeUri: String,
         val destinationDocId: String,
@@ -81,7 +88,7 @@ object ZipCreator {
         }
         val work = File(context.cacheDir, "hatch/zips/${System.currentTimeMillis()}")
         if (!work.mkdirs() && !work.isDirectory) {
-            throw IOException("Hatch could not create a temporary workspace.")
+            throw IOException("ZipHatch could not create a temporary workspace.")
         }
         try {
             val base = sanitizeZipName(request.baseName)
@@ -167,8 +174,16 @@ object ZipCreator {
             var written = 0L
             for (item in items) {
                 val params = ZipParameters().apply {
-                    compressionMethod = CompressionMethod.DEFLATE
-                    compressionLevel = CompressionLevel.NORMAL
+                    compressionMethod = if (request.compression == ZipCompression.STORE) {
+                        CompressionMethod.STORE
+                    } else {
+                        CompressionMethod.DEFLATE
+                    }
+                    compressionLevel = when (request.compression) {
+                        ZipCompression.STORE -> CompressionLevel.NORMAL
+                        ZipCompression.BALANCED -> CompressionLevel.NORMAL
+                        ZipCompression.MAXIMUM -> CompressionLevel.MAXIMUM
+                    }
                     if (password != null) {
                         isEncryptFiles = true
                         encryptionMethod = EncryptionMethod.AES
@@ -262,10 +277,10 @@ object ZipCreator {
     }
 
     fun sanitizeZipName(value: String): String {
-        var base = value.trim().ifBlank { "Hatch.zip" }
+        var base = value.trim().ifBlank { "ZipHatch.zip" }
         base = base.replace(Regex("[\\\\/:*?\"<>|]"), "-").trim()
         if (!base.endsWith(".zip", ignoreCase = true)) base += ".zip"
-        return base.take(120).ifBlank { "Hatch.zip" }
+        return base.take(120).ifBlank { "ZipHatch.zip" }
     }
 
     fun splitLabel(bytes: Long): String = when {

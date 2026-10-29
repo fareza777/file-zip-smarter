@@ -11,6 +11,7 @@ import com.hatchstudio.archive.data.ConflictPolicy
 import com.hatchstudio.archive.data.JobMode
 import com.hatchstudio.archive.data.SafNode
 import com.hatchstudio.archive.data.StorageSpace
+import com.hatchstudio.archive.data.ZipCompression
 import java.io.File
 
 enum class AppTab { HOME, FILES, QUEUE, SETTINGS }
@@ -104,6 +105,7 @@ data class ZipCreateDraft(
     val nodes: List<SafNode>,
     val name: String,
     val password: String = "",
+    val compression: ZipCompression = ZipCompression.BALANCED,
     val splitBytes: Long = 0,
     val destinationTreeUri: Uri?,
     val destinationDocId: String?,

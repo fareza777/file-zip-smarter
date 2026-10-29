@@ -85,7 +85,11 @@ fun HomeScreen(
             (it.mode == JobMode.RECLAIM || (it.removeSource && it.sourceRemoved))
     }.sumOf { it.archiveSize }
     val active = jobs.firstOrNull { it.state == JobState.RUNNING || it.state == JobState.PAUSED }
+    val attention = jobs.firstOrNull {
+        it.state == JobState.FAILED || it.state == JobState.INTERRUPTED || it.state == JobState.NEEDS_PASSWORD
+    }
     val pending = jobs.count { it.state == JobState.QUEUED || it.state == JobState.NEEDS_PASSWORD }
+    val returning = recents.isNotEmpty() || jobs.isNotEmpty() || settings.landingTreeUri != null
 
     Column(
         modifier = Modifier
@@ -128,12 +132,17 @@ fun HomeScreen(
 
         Spacer(Modifier.height(18.dp))
 
-        HeroCard(onOpenArchive = onOpenArchive)
+        if (returning) {
+            CompactHeroCard(onOpenArchive = onOpenArchive)
+        } else {
+            HeroCard(onOpenArchive = onOpenArchive)
+        }
 
-        if (active != null || pending > 0) {
+        if (active != null || attention != null || pending > 0) {
             Spacer(Modifier.height(12.dp))
             ActiveMiniCard(
                 active = active,
+                attention = attention,
                 pending = pending,
                 onClick = onOpenQueue,
             )
@@ -303,7 +312,82 @@ private fun Modifier.offsetForHero(): Modifier = this.then(
 )
 
 @Composable
-private fun ActiveMiniCard(active: ExtractionJob?, pending: Int, onClick: () -> Unit) {
+private fun CompactHeroCard(onOpenArchive: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(26.dp))
+            .clickable(onClick = onOpenArchive),
+        shape = RoundedCornerShape(26.dp),
+        color = Ink,
+        contentColor = Bone,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(Lime))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "SPACE-SAVING EXTRACTION",
+                        fontFamily = SpaceMono,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        letterSpacing = 1.sp,
+                        color = Lime,
+                    )
+                }
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "Open an archive",
+                    fontFamily = com.hatchstudio.archive.ui.theme.SpaceGrotesk,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 25.sp,
+                    letterSpacing = (-0.6).sp,
+                    color = Bone,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "ZIP, RAR, 7z · reclaim as it unpacks",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                    color = Bone.copy(alpha = 0.62f),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Box(
+                Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(Lime),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.Add, null, modifier = Modifier.size(24.dp), tint = Ink)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveMiniCard(
+    active: ExtractionJob?,
+    attention: ExtractionJob?,
+    pending: Int,
+    onClick: () -> Unit,
+) {
+    val focus = active ?: attention
+    val status = when {
+        active == null -> null
+        active.state == JobState.PAUSED -> "Paused"
+        else -> "Extracting files"
+    }
+    val attentionLabel = when (attention?.state) {
+        JobState.NEEDS_PASSWORD -> "Password needed"
+        JobState.INTERRUPTED -> "Stopped early · review the queue"
+        JobState.FAILED -> attention.message ?: "Could not finish · review the queue"
+        else -> null
+    }
     HatchCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -326,21 +410,37 @@ private fun ActiveMiniCard(active: ExtractionJob?, pending: Int, onClick: () -> 
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = active?.archiveName ?: "$pending archive${if (pending == 1) "" else "s"} waiting",
+                    text = focus?.archiveName ?: "$pending archive${if (pending == 1) "" else "s"} waiting",
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(5.dp))
-                if (active != null) {
-                    LinearProgressIndicator(
-                        progress = { active.progress },
-                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                Spacer(Modifier.height(4.dp))
+                when {
+                    active != null -> Column {
+                        if (attentionLabel != null || status != null) {
+                            Text(
+                                status ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        LinearProgressIndicator(
+                            progress = { active.progress },
+                            modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                        )
+                    }
+                    attention != null -> Text(
+                        attentionLabel ?: "Tap to review the queue",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                } else {
-                    Text(
+                    else -> Text(
                         "Tap to review the queue",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -472,7 +572,7 @@ private fun LandingRow(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    settings.landingLabel ?: "Choose where Hatch lands your files",
+                    settings.landingLabel ?: "Choose where ZipHatch lands your files",
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,

@@ -207,7 +207,7 @@ class JobManager private constructor(private val context: Context) {
             } catch (e: SecurityException) {
                 throw ArchiveFailure(
                     "E_SAF",
-                    "Hatch lost access to the destination folder. Choose it again.",
+                    "ZipHatch lost access to the destination folder. Choose it again.",
                     e.message,
                     e,
                 )

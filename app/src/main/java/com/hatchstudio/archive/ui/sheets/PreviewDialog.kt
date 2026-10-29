@@ -188,7 +188,7 @@ fun PreviewDialog(
                             )
                             Spacer(Modifier.height(5.dp))
                             Text(
-                                "Hatch read it safely. Open it in another app to view or play it.",
+                                "ZipHatch read it safely. Open it in another app to view or play it.",
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -204,7 +204,7 @@ fun PreviewDialog(
                 }
 
                 Text(
-                    "Preview is stored only in Hatch's private cache and removed when you close this screen.",
+                    "Preview is stored only in ZipHatch's private cache and removed when you close this screen.",
                     modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

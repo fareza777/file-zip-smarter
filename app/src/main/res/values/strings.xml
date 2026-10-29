@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Hatch</string>
+    <string name="app_name">ZipHatch</string>
     <string name="open_archive">Open archive</string>
     <string name="extract_free_space">Extract &amp; free space</string>
 </resources>

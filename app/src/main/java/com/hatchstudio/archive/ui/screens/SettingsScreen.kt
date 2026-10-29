@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Brightness2
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -107,7 +108,7 @@ fun SettingsScreen(
             Box(Modifier.size(6.dp).clip(CircleShape).background(Lime))
             Spacer(Modifier.width(7.dp))
             Text(
-                "Hatch ${BuildConfig.VERSION_NAME} · local-first, no account",
+                "ZipHatch ${BuildConfig.VERSION_NAME} · local-first, no account",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -124,7 +125,7 @@ fun SettingsScreen(
                     Column(Modifier.weight(1f)) {
                         Text("Theme", style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp))
                         Text(
-                            "Warm paper by day, ink at night",
+                            "Warm paper, ink, or true black",
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -145,6 +146,16 @@ fun SettingsScreen(
                         Modifier.weight(1f),
                         selected = settings.theme == ThemeMode.DARK,
                         onClick = { onTheme(ThemeMode.DARK) },
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ThemeTile(
+                        "Black",
+                        Icons.Rounded.Brightness2,
+                        Modifier.weight(1f),
+                        selected = settings.theme == ThemeMode.BLACK,
+                        onClick = { onTheme(ThemeMode.BLACK) },
                     )
                     ThemeTile(
                         "Auto",
@@ -270,7 +281,7 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(18.dp))
-        SettingsLabel("SUPPORT HATCH")
+        SettingsLabel("SUPPORT ZIPHATCH")
         Spacer(Modifier.height(8.dp))
         HatchCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
@@ -449,7 +460,7 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(16.dp))
         Text(
-            "HATCH · SPACE-SAVING EXTRACTION",
+            "ZIPHATCH · SPACE-SAVING EXTRACTION",
             modifier = Modifier.fillMaxWidth(),
             fontFamily = SpaceMono,
             fontSize = 10.5.sp,
@@ -467,13 +478,13 @@ fun SettingsScreen(
             text = {
                 Column(Modifier.height(380.dp).verticalScroll(rememberScrollState())) {
                     Text(
-                        "Hatch's Rust core and Android app are open source. Copyright and license texts ship in the repository's NOTICE file.",
+                        "ZipHatch's Rust core and Android app are open source. Copyright and license texts ship in the repository's NOTICE file.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Spacer(Modifier.height(12.dp))
                     Text("UnRAR", fontWeight = FontWeight.Bold)
                     Text(
-                        "RAR extraction uses the UnRAR library, Copyright © 1993–2026 Alexander Roshal. The UnRAR source is used under its freeware distribution permission, which allows extraction and prohibits using it to reverse-engineer the RAR compression algorithm or to create a RAR compressor. Hatch only extracts RAR archives.",
+                        "RAR extraction uses the UnRAR library, Copyright © 1993–2026 Alexander Roshal. The UnRAR source is used under its freeware distribution permission, which allows extraction and prohibits using it to reverse-engineer the RAR compression algorithm or to create a RAR compressor. ZipHatch only extracts RAR archives.",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                     )
                     Spacer(Modifier.height(10.dp))
@@ -484,7 +495,7 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "Hatch does not include any proprietary compression code and does not create RAR archives.",
+                        "ZipHatch does not include any proprietary compression code and does not create RAR archives.",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                     )
                 }
@@ -499,7 +510,7 @@ fun SettingsScreen(
             title = { Text("Forget saved passwords?") },
             text = {
                 Text(
-                    "Hatch will delete every password in its encrypted local vault. Archives that need a password will ask again.",
+                    "ZipHatch will delete every password in its encrypted local vault. Archives that need a password will ask again.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },

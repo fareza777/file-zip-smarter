@@ -5,7 +5,7 @@ import java.io.RandomAccessFile
 
 /**
  * A split ZIP stores local-header offsets relative to the disk they start on.
- * Once Hatch has copied every volume into one contiguous private file, those
+ * Once ZipHatch has copied every volume into one contiguous private file, those
  * offsets must be translated to absolute file offsets before the Rust ZIP
  * reader can seek through them. The on-disk data is not changed.
  *
