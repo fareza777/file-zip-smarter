@@ -81,7 +81,7 @@ data class ArchiveEntry(
                 "mp4", "mkv", "mov", "webm", "avi", "m4v", "3gp" -> FileCategory.Video
                 "mp3", "flac", "wav", "ogg", "m4a", "aac", "opus" -> FileCategory.Audio
                 "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "epub" -> FileCategory.Document
-                "apk", "zip", "rar", "7z", "tar", "gz", "xz", "zst" -> FileCategory.Archive
+                "apk", "zip", "rar", "7z", "tar", "gz", "xz", "txz", "zst", "zstd", "tzst", "bz2", "tbz2", "tbz" -> FileCategory.Archive
                 else -> FileCategory.Other
             }
         }

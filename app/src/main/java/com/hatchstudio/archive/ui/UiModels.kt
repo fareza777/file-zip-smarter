@@ -100,6 +100,28 @@ sealed interface UiEvent {
     data object OpenQueue : UiEvent
 }
 
+data class ZipCreateDraft(
+    val nodes: List<SafNode>,
+    val name: String,
+    val password: String = "",
+    val splitBytes: Long = 0,
+    val destinationTreeUri: Uri?,
+    val destinationDocId: String?,
+    val destinationLabel: String?,
+    val fileCount: Int = 0,
+    val totalBytes: Long = 0,
+    val scanning: Boolean = true,
+) {
+    val encrypted: Boolean get() = password.isNotBlank()
+}
+
+data class ZipCreateProgress(
+    val done: Int,
+    val total: Int,
+    val bytes: Long,
+    val label: String = "Building ZIP",
+)
+
 data class OpenPasswordPrompt(
     val archiveName: String,
     val message: String,

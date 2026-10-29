@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.WarningAmber
@@ -105,6 +106,7 @@ fun InspectorScreen(
     onClearSelection: () -> Unit,
     onPrepare: () -> Unit,
     onPreview: (Int) -> Unit,
+    onShare: (Int) -> Unit,
 ) {
     var showReclaimInfo by remember { mutableStateOf(false) }
     val info = state.info
@@ -208,6 +210,17 @@ fun InspectorScreen(
                         )
                     }
                     if (previewable != null) {
+                        IconButton(
+                            onClick = { onShare(previewable.index) },
+                            modifier = Modifier.size(46.dp),
+                        ) {
+                            Icon(
+                                Icons.Rounded.Share,
+                                "Share this file",
+                                modifier = Modifier.size(21.dp),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
                         IconButton(
                             onClick = { onPreview(previewable.index) },
                             modifier = Modifier.size(46.dp),

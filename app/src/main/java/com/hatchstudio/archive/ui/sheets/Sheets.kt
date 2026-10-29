@@ -607,15 +607,15 @@ fun OnboardingScreen(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                "Extract ZIP, RAR, 7z and TAR straight into your own folder. Reclaim mode consumes a ZIP as its files land — so you need far less free space.",
+                "Extract ZIP, RAR, 7z, TAR, XZ, ZSTD and BZ2 into your own folder. Reclaim a ZIP as it unpacks, or create one with AES-256 and split volumes.",
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 23.sp),
                 color = muted,
             )
             Spacer(Modifier.height(18.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     OnboardPill("SAVES SPACE")
-                    OnboardPill("RESUMES")
-                    OnboardPill("100% LOCAL")
+                    OnboardPill("AES-256")
+                    OnboardPill("ON-DEVICE")
                 }
             Spacer(Modifier.weight(1f))
             PrimaryAction(

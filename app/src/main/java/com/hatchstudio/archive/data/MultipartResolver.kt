@@ -2,6 +2,7 @@ package com.hatchstudio.archive.data
 
 import android.content.Context
 import com.hatchstudio.archive.core.ArchiveSource
+import net.lingala.zip4j.ZipFile
 import java.io.File
 import java.io.FileOutputStream
 
@@ -63,14 +64,50 @@ object MultipartResolver {
         if (tail == null || sequential.isEmpty()) return null
 
         val dir = stageDir(context)
-        val target = File(dir, base + ".zip")
+        val staged = ArrayList<File>()
+        for (part in sequential + tail) {
+            val input = tree.openRead(part)?.let { java.io.FileInputStream(it.fileDescriptor) }
+                ?: continue
+            val copy = File(dir, part.name)
+            input.use { source ->
+                copy.outputStream().use { output -> source.copyTo(output, 1024 * 1024) }
+            }
+            staged += copy
+        }
+        val target = File(dir, "joined-" + base + ".zip")
         FileOutputStream(target).use { output ->
-            for (part in sequential + tail) {
-                val input = tree.openRead(part)?.let { java.io.FileInputStream(it.fileDescriptor) }
-                    ?: continue
-                input.use { it.copyTo(output, 1024 * 1024) }
+            staged.forEach { part ->
+                part.inputStream().use { it.copyTo(output, 1024 * 1024) }
             }
             output.fd.sync()
+        }
+        // Standard split volumes use offsets relative to the disk a local
+        // header starts on. Rewrite them in the joined private copy so the
+        // Rust seek-based reader sees one ordinary ZIP. Encrypted entries are
+        // preserved byte-for-byte; no password is needed here.
+        val splitLength = sequential.firstOrNull { it.name.endsWith(".z01", true) }?.size
+            ?: sequential.firstOrNull()?.size
+            ?: 0L
+        val normalized = splitLength > 0 && ZipSplitNormalizer.normalize(target, splitLength)
+        if (!normalized) {
+            // Fallback for unusual split sets (for example Zip64). Zip4j can
+            // merge many of them; a plain concatenation remains the last
+            // resort for simple byte-split archives.
+            val tailFile = staged.firstOrNull { it.name.equals(tail.name, ignoreCase = true) }
+            val merged = File(dir, "merged-" + base + ".zip")
+            val mergedOk = tailFile != null && runCatching {
+                ZipFile(tailFile).mergeSplitFiles(merged)
+                merged.isFile && merged.length() > 0
+            }.getOrDefault(false)
+            if (mergedOk) {
+                return ArchiveSource(
+                    displayName = base + ".zip",
+                    size = merged.length(),
+                    file = merged,
+                    multipart = true,
+                    ownedPath = dir,
+                )
+            }
         }
         return ArchiveSource(
             displayName = base + ".zip",

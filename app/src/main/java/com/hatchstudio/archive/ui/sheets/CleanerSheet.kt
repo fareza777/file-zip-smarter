@@ -158,7 +158,7 @@ fun CleanerSheet(
                 state.items.isEmpty() -> {
                     EmptyPanel(
                         title = "Nothing to clean here",
-                        body = "No whole ZIP, RAR, 7z, TAR or GZIP archives were found in ${state.folderLabel.ifBlank { "this folder" }}. Split sets are skipped so no volume is orphaned.",
+                        body = "No whole ZIP, RAR, 7z, TAR, GZIP, XZ, ZSTD or BZ2 archives were found in ${state.folderLabel.ifBlank { "this folder" }}. Split sets are skipped so no volume is orphaned.",
                         icon = Icons.Rounded.CleaningServices,
                         action = {
                             PrimaryAction(

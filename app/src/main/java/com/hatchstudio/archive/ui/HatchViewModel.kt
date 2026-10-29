@@ -1,5 +1,6 @@
 package com.hatchstudio.archive.ui
 
+import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -11,15 +12,19 @@ import com.hatchstudio.archive.core.ArchiveFailure
 import com.hatchstudio.archive.core.ArchiveOpener
 import com.hatchstudio.archive.core.ArchiveSource
 import com.hatchstudio.archive.core.NativeEngine
+import com.hatchstudio.archive.ads.AdsManager
 import com.hatchstudio.archive.data.ArchiveCleaner
+import com.hatchstudio.archive.data.BillingManager
 import com.hatchstudio.archive.data.Archives
 import com.hatchstudio.archive.data.CleanerItem
 import com.hatchstudio.archive.data.ConflictPolicy
+import com.hatchstudio.archive.data.EntrySharer
 import com.hatchstudio.archive.data.ExtractionJob
 import com.hatchstudio.archive.data.JobMode
 import com.hatchstudio.archive.data.JobState
 import com.hatchstudio.archive.data.MultipartResolver
 import com.hatchstudio.archive.data.PasswordVault
+import com.hatchstudio.archive.data.PurchaseStore
 import com.hatchstudio.archive.data.RecentArchive
 import com.hatchstudio.archive.data.RecentStore
 import com.hatchstudio.archive.data.SafNode
@@ -27,6 +32,7 @@ import com.hatchstudio.archive.data.SafTree
 import com.hatchstudio.archive.data.SettingsStore
 import com.hatchstudio.archive.data.StorageSpace
 import com.hatchstudio.archive.data.ThemeMode
+import com.hatchstudio.archive.data.ZipCreator
 import com.hatchstudio.archive.jobs.JobManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -41,13 +47,22 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 class HatchViewModel(application: Application) : AndroidViewModel(application) {
     val settingsStore = SettingsStore(application)
     val recentStore = RecentStore(application)
     val vault = PasswordVault(application)
+    val purchases = PurchaseStore(application)
     val jobManager: JobManager = JobManager.init(application)
+    private val billingManager = BillingManager(application, purchases) { message ->
+        _events.tryEmit(UiEvent.Message(message))
+    }
+    val billing = billingManager.state
+    val entitlements = purchases.state
 
     val settings = settingsStore.state
     val recents = recentStore.items
@@ -83,6 +98,15 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
     private val _preview = MutableStateFlow<EntryPreview?>(null)
     val preview: StateFlow<EntryPreview?> = _preview.asStateFlow()
 
+    private val _zipDraft = MutableStateFlow<ZipCreateDraft?>(null)
+    val zipDraft: StateFlow<ZipCreateDraft?> = _zipDraft.asStateFlow()
+
+    private val _zipProgress = MutableStateFlow<ZipCreateProgress?>(null)
+    val zipProgress: StateFlow<ZipCreateProgress?> = _zipProgress.asStateFlow()
+
+    private val _showSplash = MutableStateFlow(true)
+    val showSplash: StateFlow<Boolean> = _showSplash.asStateFlow()
+
     private var cleanerScan: Job? = null
     private var tree: SafTree? = null
     private var currentArchive: CurrentArchive? = null
@@ -90,6 +114,9 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
     private var pendingQuickClean = false
     private var batchSources: List<BatchItem>? = null
     private val sessionPasswords = ConcurrentHashMap<String, String>()
+    private val adSeenJobs = HashSet<String>()
+    private var adFinishedCount = 0
+    private var adBaselineReady = false
 
     init {
         settings.value.landingTreeUri?.let { uri ->
@@ -97,6 +124,10 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
                 loadTree(Uri.parse(uri))
             }
         }
+    }
+
+    fun finishSplash() {
+        _showSplash.value = false
     }
 
     fun consumeTabRequest(): AppTab? {
@@ -409,6 +440,40 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissPreview() {
         _preview.value?.file?.let { runCatching { it.delete() } }
         _preview.value = null
+    }
+
+    fun shareEntry(index: Int) {
+        val current = currentArchive ?: return
+        val entry = current.opened.entries.firstOrNull { it.index == index && !it.isDirectory } ?: return
+        if (!entry.canExtract) {
+            _events.tryEmit(UiEvent.Message("That entry is blocked for safety."))
+            return
+        }
+        _events.tryEmit(UiEvent.Message("Preparing ${entry.displayName} to share…"))
+        viewModelScope.launch {
+            try {
+                val file = withContext(Dispatchers.IO) {
+                    EntrySharer.stage(
+                        context = getApplication(),
+                        handle = current.opened.handle,
+                        password = current.password,
+                        entry = entry,
+                    )
+                }
+                val sent = EntrySharer.send(
+                    context = getApplication(),
+                    file = file,
+                    mimeType = SafTree.mimeFor(entry.displayName),
+                )
+                if (!sent) {
+                    _events.tryEmit(UiEvent.Message("No app on this device can receive that file."))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _events.tryEmit(UiEvent.Message(ArchiveFailure.from(e).userMessage))
+            }
+        }
     }
 
     private fun decodePreview(bytes: ByteArray): android.graphics.Bitmap? {
@@ -773,6 +838,134 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    // ---------------- create ZIP ----------------
+
+    fun prepareZip(nodes: List<SafNode>) {
+        val safTree = tree ?: return
+        if (nodes.isEmpty()) {
+            _events.tryEmit(UiEvent.Message("Choose at least one file or folder to zip."))
+            return
+        }
+        val docId = _files.value.currentDocId ?: safTree.rootDocumentId
+        val label = _files.value.crumbs.lastOrNull()?.name ?: _files.value.treeLabel
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
+        _zipDraft.value = ZipCreateDraft(
+            nodes = nodes,
+            name = "Hatch-$stamp.zip",
+            destinationTreeUri = safTree.treeUri,
+            destinationDocId = docId,
+            destinationLabel = label,
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            val (files, bytes) = runCatching { ZipCreator.scan(safTree, nodes) }
+                .getOrDefault(0 to 0L)
+            _zipDraft.update { draft ->
+                if (draft == null) null else draft.copy(
+                    fileCount = files,
+                    totalBytes = bytes,
+                    scanning = false,
+                )
+            }
+        }
+    }
+
+    fun setZipName(value: String) {
+        _zipDraft.update { it?.copy(name = value) }
+    }
+
+    fun setZipPassword(value: String) {
+        _zipDraft.update { it?.copy(password = value) }
+    }
+
+    fun setZipSplit(bytes: Long) {
+        _zipDraft.update { it?.copy(splitBytes = bytes) }
+    }
+
+    fun setZipDestination(uri: Uri) {
+        runCatching {
+            getApplication<Application>().contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val destination = runCatching { SafTree(getApplication(), uri) }.getOrNull() ?: return@launch
+            val label = runCatching { destination.displayName() }.getOrDefault("Folder")
+            _zipDraft.update {
+                it?.copy(
+                    destinationTreeUri = uri,
+                    destinationDocId = destination.rootDocumentId,
+                    destinationLabel = label,
+                )
+            }
+        }
+    }
+
+    fun dismissZipDraft() {
+        if (_zipProgress.value != null) return
+        _zipDraft.value = null
+    }
+
+    fun startZipCreation() {
+        val draft = _zipDraft.value ?: return
+        if (_zipProgress.value != null) return
+        val source = tree ?: return
+        val treeUri = draft.destinationTreeUri
+        val docId = draft.destinationDocId
+        if (treeUri == null || docId == null) {
+            _events.tryEmit(UiEvent.Message("Choose a destination folder for the ZIP."))
+            return
+        }
+        val name = ZipCreator.sanitizeZipName(draft.name)
+        val destination = runCatching { SafTree(getApplication(), treeUri) }.getOrNull()
+        if (destination == null) {
+            _events.tryEmit(UiEvent.Message("That destination folder is no longer available."))
+            return
+        }
+        _zipProgress.value = ZipCreateProgress(done = 0, total = draft.fileCount, bytes = 0L)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val result = ZipCreator.create(
+                    context = getApplication(),
+                    source = source,
+                    destination = destination,
+                    request = ZipCreator.Request(
+                        baseName = name,
+                        password = draft.password.takeIf { it.isNotBlank() },
+                        splitBytes = draft.splitBytes,
+                        destinationTreeUri = treeUri.toString(),
+                        destinationDocId = docId,
+                        nodes = draft.nodes,
+                    ),
+                ) { done, total, bytes ->
+                    _zipProgress.value = ZipCreateProgress(done = done, total = total, bytes = bytes)
+                }
+                _zipProgress.value = null
+                _zipDraft.value = null
+                if (treeUri == source.treeUri && docId == _files.value.currentDocId) {
+                    refreshFiles()
+                }
+                _events.emit(
+                    UiEvent.Message(
+                        if (result.files.size > 1) {
+                            "Created ${result.files.size} split volumes · ${result.entries} files"
+                        } else {
+                            "Created ${result.files.firstOrNull() ?: name}"
+                        },
+                    ),
+                )
+            } catch (error: Throwable) {
+                _zipProgress.value = null
+                _events.emit(
+                    UiEvent.Message(
+                        error.message?.takeIf { it.isNotBlank() }
+                            ?: "The ZIP could not be created.",
+                    ),
+                )
+            }
+        }
+    }
+
     fun setDraftDestination(uri: Uri) {
         runCatching {
             getApplication<Application>().contentResolver.takePersistableUriPermission(
@@ -972,6 +1165,48 @@ class HatchViewModel(application: Application) : AndroidViewModel(application) {
 
     fun activeJob(): ExtractionJob? = jobs.value.firstOrNull {
         it.state == JobState.RUNNING || it.state == JobState.PAUSED
+    }
+
+    // ---------------- ads & billing ----------------
+
+    fun buyRemoveAds(activity: Activity) = billingManager.buy(activity)
+
+    fun restorePurchase() = billingManager.restore()
+
+    fun watchRewarded(activity: Activity) {
+        if (purchases.state.value.adFree()) {
+            _events.tryEmit(UiEvent.Message("Ads are already off right now."))
+            return
+        }
+        AdsManager.showRewarded(
+            activity,
+            onReward = {
+                purchases.grantAdFree(24)
+                _events.tryEmit(UiEvent.Message("24 hours ad-free unlocked. Thank you."))
+            },
+            onUnavailable = { message -> _events.tryEmit(UiEvent.Message(message)) },
+        )
+    }
+
+    /**
+     * Interstitials are deliberately sparse: three completed jobs, then at
+     * most one every few minutes. The first observation only records existing
+     * history so old jobs never trigger an ad when the app opens.
+     */
+    fun maybeShowInterstitial(activity: Activity) {
+        val completed = jobs.value.filter { it.state == JobState.COMPLETED }
+        if (!adBaselineReady) {
+            completed.forEach { adSeenJobs += it.id }
+            adBaselineReady = true
+            return
+        }
+        val fresh = completed.filter { adSeenJobs.add(it.id) }
+        if (fresh.isEmpty()) return
+        adFinishedCount += fresh.size
+        if (adFinishedCount < 3) return
+        if (purchases.state.value.adFree()) return
+        adFinishedCount = 0
+        AdsManager.maybeShowInterstitial(activity)
     }
 
     // ---------------- settings ----------------

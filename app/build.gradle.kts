@@ -12,6 +12,17 @@ val keystoreProps = Properties().apply {
     if (f.exists()) FileInputStream(f).use { load(it) }
 }
 
+fun configValue(name: String, fallback: String): String =
+    providers.gradleProperty(name).orElse(fallback).get()
+
+// Google's public test units are the safe default. Replace these four values
+// in gradle.properties (or ~/.gradle/gradle.properties) with your AdMob units
+// before shipping a monetised build.
+val admobAppId = configValue("HATCH_ADMOB_APP_ID", "ca-app-pub-3940256099942544~3347511713")
+val admobBannerId = configValue("HATCH_ADMOB_BANNER", "ca-app-pub-3940256099942544/6300978111")
+val admobInterstitialId = configValue("HATCH_ADMOB_INTERSTITIAL", "ca-app-pub-3940256099942544/1033173712")
+val admobRewardedId = configValue("HATCH_ADMOB_REWARDED", "ca-app-pub-3940256099942544/5224354917")
+
 android {
     namespace = "com.hatchstudio.archive"
     compileSdk = 36
@@ -20,8 +31,14 @@ android {
         applicationId = "com.hatchstudio.archive"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
+
+        manifestPlaceholders["admobAppId"] = admobAppId
+        buildConfigField("String", "ADMOB_BANNER_ID", "\"$admobBannerId\"")
+        buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"$admobInterstitialId\"")
+        buildConfigField("String", "ADMOB_REWARDED_ID", "\"$admobRewardedId\"")
+        buildConfigField("String", "REMOVE_ADS_PRODUCT_ID", "\"remove_ads\"")
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
@@ -105,6 +122,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+
+    implementation("com.google.android.gms:play-services-ads:25.5.0")
+    implementation("com.android.billingclient:billing-ktx:7.1.1")
+    implementation("net.lingala.zip4j:zip4j:2.11.6")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")

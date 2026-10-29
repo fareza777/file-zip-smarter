@@ -382,7 +382,7 @@ pub extern "system" fn Java_com_hatchstudio_archive_core_NativeEngine_nativeVers
     _class: JClass,
 ) -> jstring {
     let version = format!(
-        "hatch-core {} (zip {}, 7z, tar, rar)",
+        "hatch-core {} (zip {}, 7z, tar, rar, xz, zstd, bzip2)",
         env!("CARGO_PKG_VERSION"),
         "9"
     );

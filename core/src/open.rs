@@ -1,3 +1,4 @@
+use crate::compressed_engine::{open_compressed, open_tar_compressed, CompressionKind};
 use crate::error::{ErrorKind, HatchError, HatchResult};
 use crate::gzip_engine::{expand_tar_gz, open_gzip, temp_name, GzipBackend};
 use crate::model::{ArchiveInfo, Entry, MODE_RECLAIM};
@@ -34,6 +35,7 @@ pub enum Backend {
     SevenZ(SevenZBackend),
     Rar(RarBackend),
     Gzip(GzipBackend),
+    Compressed(crate::compressed_engine::CompressedBackend),
     Reclaim(ReclaimBackend),
 }
 
@@ -45,6 +47,7 @@ impl Backend {
             Backend::SevenZ(b) => b.entries(),
             Backend::Rar(b) => b.entries(),
             Backend::Gzip(b) => b.entries(),
+            Backend::Compressed(b) => b.entries(),
             Backend::Reclaim(b) => b.entries(),
         }
     }
@@ -62,6 +65,7 @@ impl Backend {
             Backend::SevenZ(b) => b.extract_selected(selected, password, sink, control),
             Backend::Rar(b) => b.extract_selected(selected, password, sink, control),
             Backend::Gzip(b) => b.extract_selected(selected, password, sink, control),
+            Backend::Compressed(b) => b.extract_selected(selected, password, sink, control),
             Backend::Reclaim(b) => b.extract_selected(selected, password, sink, control),
         }
     }
@@ -148,7 +152,7 @@ pub fn open(mut file: File, options: OpenOptions) -> HatchResult<Opened> {
                     "This .tar.gz file does not contain a valid TAR archive.",
                 ));
             }
-            let opened = open_tar(check, &display, archive_size, Some(temp.clone()))?;
+            let opened = open_tar(check, &display, archive_size, Some(temp.clone()), "TAR.GZ")?;
             return Ok(Opened {
                 backend: Backend::Tar(opened.backend),
                 info: opened.info,
@@ -163,9 +167,59 @@ pub fn open(mut file: File, options: OpenOptions) -> HatchResult<Opened> {
         });
     }
 
+    let xz_named = lower.ends_with(".xz");
+    let tar_xz_named = lower.ends_with(".tar.xz") || lower.ends_with(".txz");
+    let zstd_named = lower.ends_with(".zst") || lower.ends_with(".zstd");
+    let tar_zstd_named = lower.ends_with(".tar.zst")
+        || lower.ends_with(".tzst")
+        || lower.ends_with(".tar.zstd");
+    let bz2_named = lower.ends_with(".bz2");
+    let tar_bz2_named = lower.ends_with(".tar.bz2")
+        || lower.ends_with(".tbz2")
+        || lower.ends_with(".tbz");
+
+    if is_xz_magic(magic) || xz_named {
+        let kind = CompressionKind::Xz;
+        if tar_xz_named {
+            return open_compressed_tar(file, &display, archive_size, &options.temp_dir, kind, "TAR.XZ");
+        }
+        let opened = open_compressed(file, &display, archive_size, kind)?;
+        return Ok(Opened {
+            backend: Backend::Compressed(opened.backend),
+            info: opened.info,
+            temp_paths: Vec::new(),
+        });
+    }
+
+    if is_zstd_magic(magic) || zstd_named {
+        let kind = CompressionKind::Zstd;
+        if tar_zstd_named {
+            return open_compressed_tar(file, &display, archive_size, &options.temp_dir, kind, "TAR.ZST");
+        }
+        let opened = open_compressed(file, &display, archive_size, kind)?;
+        return Ok(Opened {
+            backend: Backend::Compressed(opened.backend),
+            info: opened.info,
+            temp_paths: Vec::new(),
+        });
+    }
+
+    if magic.starts_with(b"BZh") || bz2_named {
+        let kind = CompressionKind::Bzip2;
+        if tar_bz2_named {
+            return open_compressed_tar(file, &display, archive_size, &options.temp_dir, kind, "TAR.BZ2");
+        }
+        let opened = open_compressed(file, &display, archive_size, kind)?;
+        return Ok(Opened {
+            backend: Backend::Compressed(opened.backend),
+            info: opened.info,
+            temp_paths: Vec::new(),
+        });
+    }
+
     let mut probe = file;
     if tar_named || looks_like_tar(&mut probe) {
-        let opened = open_tar(probe, &display, archive_size, None)?;
+        let opened = open_tar(probe, &display, archive_size, None, "TAR")?;
         return Ok(Opened {
             backend: Backend::Tar(opened.backend),
             info: opened.info,
@@ -173,25 +227,32 @@ pub fn open(mut file: File, options: OpenOptions) -> HatchResult<Opened> {
         });
     }
 
-    if magic.starts_with(b"BZh") {
-        return Err(HatchError::unsupported(
-            "Bzip2 archives are not supported yet. Expand the .bz2 first, or use a ZIP, 7z, RAR or TAR archive.",
-        ));
-    }
-    if magic.starts_with(&[0xFD, b'7', b'z', b'X', b'Z', 0x00]) {
-        return Err(HatchError::unsupported(
-            "XZ archives are not supported yet. Hatch reads ZIP, 7z, RAR, TAR, TAR.GZ and GZIP.",
-        ));
-    }
-    if magic.starts_with(&[0x28, 0xB5, 0x2F, 0xFD]) {
-        return Err(HatchError::unsupported(
-            "Zstandard archives are not supported yet. Hatch reads ZIP, 7z, RAR, TAR, TAR.GZ and GZIP.",
-        ));
-    }
-
     Err(HatchError::unsupported(
-        "Hatch could not recognise this file as an archive. It reads ZIP, 7z, RAR, TAR, TAR.GZ and GZIP.",
+        "Hatch could not recognise this file as an archive. It reads ZIP, 7z, RAR, TAR, TAR.GZ, GZIP, XZ, ZSTD and BZIP2.",
     ))
+}
+
+fn open_compressed_tar(
+    file: File,
+    display: &str,
+    archive_size: u64,
+    temp_dir: &std::path::Path,
+    kind: CompressionKind,
+    format: &str,
+) -> HatchResult<Opened> {
+    let (mut expanded, temp) = open_tar_compressed(file, display, archive_size, temp_dir, kind)?;
+    if !looks_like_tar(&mut expanded) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(HatchError::corrupt(
+            "This compressed TAR does not contain a valid TAR archive.",
+        ));
+    }
+    let opened = open_tar(expanded, display, archive_size, Some(temp.clone()), format)?;
+    Ok(Opened {
+        backend: Backend::Tar(opened.backend),
+        info: opened.info,
+        temp_paths: vec![temp],
+    })
 }
 
 fn is_zip_magic(magic: &[u8]) -> bool {
@@ -210,4 +271,12 @@ fn is_7z_magic(magic: &[u8]) -> bool {
 
 fn is_gzip_magic(magic: &[u8]) -> bool {
     magic.starts_with(&[0x1f, 0x8b])
+}
+
+fn is_xz_magic(magic: &[u8]) -> bool {
+    magic.starts_with(&[0xFD, b'7', b'z', b'X', b'Z', 0x00])
+}
+
+fn is_zstd_magic(magic: &[u8]) -> bool {
+    magic.starts_with(&[0x28, 0xB5, 0x2F, 0xFD])
 }

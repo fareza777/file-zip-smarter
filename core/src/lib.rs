@@ -1,3 +1,4 @@
+pub mod compressed_engine;
 pub mod error;
 pub mod extract;
 pub mod gzip_engine;

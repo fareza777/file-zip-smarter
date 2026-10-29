@@ -24,6 +24,7 @@ pub fn open_tar(
     display_name: &str,
     archive_size: u64,
     temp_path: Option<std::path::PathBuf>,
+    format: &str,
 ) -> HatchResult<TarOpen> {
     file.seek(SeekFrom::Start(0))?;
     let mut archive = Archive::new(&mut file);
@@ -88,15 +89,11 @@ pub fn open_tar(
         raw_index += 1;
     }
 
-    let mut info = ArchiveInfo::base(
-        if temp_path.is_some() { "TAR.GZ" } else { "TAR" },
-        display_name,
-        archive_size,
-    );
+    let mut info = ArchiveInfo::base(format, display_name, archive_size);
     info.recompute(&entries);
     if temp_path.is_some() {
         info.notes.push(
-            "TAR.GZ is expanded once to a private temporary TAR so entries can be read quickly. The temporary TAR is deleted when this archive is closed."
+            "This compressed TAR is expanded once to a private temporary TAR so entries can be read quickly. The temporary TAR is deleted when this archive is closed."
                 .to_string(),
         );
     }

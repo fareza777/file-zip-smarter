@@ -42,21 +42,25 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.hatchstudio.archive.ads.AdBanner
 import com.hatchstudio.archive.data.ExtractionJob
 import com.hatchstudio.archive.data.JobState
 import com.hatchstudio.archive.data.SafNode
 import com.hatchstudio.archive.ui.AppTab
+import com.hatchstudio.archive.ui.HatchLaunchSplash
 import com.hatchstudio.archive.ui.HatchViewModel
 import com.hatchstudio.archive.ui.OpenPasswordPrompt
 import com.hatchstudio.archive.ui.UiEvent
 import com.hatchstudio.archive.ui.components.BottomDock
 import com.hatchstudio.archive.ui.components.HatchBackdrop
+import com.hatchstudio.archive.ui.components.findActivity
 import com.hatchstudio.archive.ui.screens.FilesScreen
 import com.hatchstudio.archive.ui.screens.HomeScreen
 import com.hatchstudio.archive.ui.screens.InspectorScreen
 import com.hatchstudio.archive.ui.screens.QueueScreen
 import com.hatchstudio.archive.ui.screens.SettingsScreen
 import com.hatchstudio.archive.ui.sheets.CleanerSheet
+import com.hatchstudio.archive.ui.sheets.CreateZipSheet
 import com.hatchstudio.archive.ui.sheets.ExtractionSheet
 import com.hatchstudio.archive.ui.sheets.LoadingScrim
 import com.hatchstudio.archive.ui.sheets.PreviewDialog
@@ -138,10 +142,16 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
     val vaultCount by vm.vaultCount.collectAsStateWithLifecycle()
     val cleaner by vm.cleaner.collectAsStateWithLifecycle()
     val preview by vm.preview.collectAsStateWithLifecycle()
+    val zipDraft by vm.zipDraft.collectAsStateWithLifecycle()
+    val zipProgress by vm.zipProgress.collectAsStateWithLifecycle()
+    val entitlements by vm.entitlements.collectAsStateWithLifecycle()
+    val billing by vm.billing.collectAsStateWithLifecycle()
+    val showSplash by vm.showSplash.collectAsStateWithLifecycle()
 
     var tab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var showCleaner by rememberSaveable { mutableStateOf(false) }
     var pickingDestination by remember { mutableStateOf(false) }
+    var pickingZipDestination by remember { mutableStateOf(false) }
     var jobPassword by remember { mutableStateOf<ExtractionJob?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -150,9 +160,14 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
         if (uri != null) {
-            if (pickingDestination) vm.setDraftDestination(uri) else vm.setLandingTree(uri)
+            when {
+                pickingZipDestination -> vm.setZipDestination(uri)
+                pickingDestination -> vm.setDraftDestination(uri)
+                else -> vm.setLandingTree(uri)
+            }
         }
         pickingDestination = false
+        pickingZipDestination = false
     }
     val archivePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -199,6 +214,14 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
             }
         }
     }
+    LaunchedEffect(jobs) {
+        context.findActivity()?.let { vm.maybeShowInterstitial(it) }
+    }
+
+    if (showSplash) {
+        HatchLaunchSplash { vm.finishSplash() }
+        return
+    }
 
     val onboarding = !settings.onboarded
     BackHandler(enabled = true) {
@@ -207,6 +230,7 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
                 vm.onboardingDone()
                 (context as? android.app.Activity)?.finish()
             }
+            zipDraft != null -> vm.dismissZipDraft()
             preview != null -> vm.dismissPreview()
             showCleaner -> {
                 showCleaner = false
@@ -273,6 +297,7 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
                                         vm.scanCleaner()
                                     },
                                     onBatchExtract = { nodes -> vm.prepareBatch(nodes) },
+                                    onCreateZip = { nodes -> vm.prepareZip(nodes) },
                                     onDelete = vm::deleteNodes,
                                     onRename = vm::renameNode,
                                 )
@@ -314,6 +339,15 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
                                     onClearVault = vm::clearVault,
                                     onClearRecents = vm::clearRecents,
                                     onClearCaches = vm::clearTransientCaches,
+                                    adsRemoved = entitlements.adFree(),
+                                    billing = billing,
+                                    onBuyRemoveAds = {
+                                        context.findActivity()?.let(vm::buyRemoveAds)
+                                    },
+                                    onRestorePurchase = vm::restorePurchase,
+                                    onWatchRewarded = {
+                                        context.findActivity()?.let(vm::watchRewarded)
+                                    },
                                 )
                             }
 
@@ -329,11 +363,15 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
                                     onClearSelection = vm::clearEntrySelection,
                                     onPrepare = vm::prepareExtraction,
                                     onPreview = vm::previewEntry,
+                                    onShare = vm::shareEntry,
                                 )
                             }
                         }
                     }
                     if (inspector == null) {
+                        if (tab == AppTab.HOME && !entitlements.adFree()) {
+                            AdBanner(visible = true)
+                        }
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             Box(Modifier.fillMaxWidth().widthIn(max = 620.dp)) {
                                 BottomDock(selected = tab, onSelect = { tab = it })
@@ -380,6 +418,22 @@ private fun HatchRoot(vm: HatchViewModel, dark: Boolean) {
             onToggle = vm::toggleCleanerItem,
             onToggleAll = vm::toggleAllCleaner,
             onStart = { if (vm.startCleaner()) showCleaner = false },
+        )
+    }
+
+    zipDraft?.let { draftState ->
+        CreateZipSheet(
+            draft = draftState,
+            progress = zipProgress,
+            onDismiss = vm::dismissZipDraft,
+            onName = vm::setZipName,
+            onPassword = vm::setZipPassword,
+            onSplit = vm::setZipSplit,
+            onPickDestination = {
+                pickingZipDestination = true
+                treePicker.launch(draftState.destinationTreeUri)
+            },
+            onStart = vm::startZipCreation,
         )
     }
 

@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -28,6 +29,8 @@ import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.SettingsBrightness
 import androidx.compose.material.icons.rounded.Tune
@@ -35,6 +38,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -54,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hatchstudio.archive.BuildConfig
 import com.hatchstudio.archive.data.AppSettings
+import com.hatchstudio.archive.data.BillingState
 import com.hatchstudio.archive.data.ConflictPolicy
 import com.hatchstudio.archive.data.ThemeMode
 import com.hatchstudio.archive.ui.components.HatchCard
@@ -76,6 +81,11 @@ fun SettingsScreen(
     onClearVault: () -> Unit,
     onClearRecents: () -> Unit,
     onClearCaches: () -> Unit,
+    adsRemoved: Boolean,
+    billing: BillingState,
+    onBuyRemoveAds: () -> Unit,
+    onRestorePurchase: () -> Unit,
+    onWatchRewarded: () -> Unit,
 ) {
     var showLicenses by remember { mutableStateOf(false) }
     var confirmClearVault by remember { mutableStateOf(false) }
@@ -260,6 +270,119 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(18.dp))
+        SettingsLabel("SUPPORT HATCH")
+        Spacer(Modifier.height(8.dp))
+        HatchCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SettingsIcon(if (adsRemoved) Icons.Rounded.Block else Icons.Rounded.AutoAwesome)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (adsRemoved) "Ads are off" else "Remove ads forever",
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            if (adsRemoved) {
+                                "Thank you for supporting local-first extraction."
+                            } else {
+                                "One purchase. No subscription. ${billing.price}."
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (adsRemoved) {
+                        Text(
+                            "OWNED",
+                            fontFamily = SpaceMono,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                if (!adsRemoved) {
+                    Spacer(Modifier.height(12.dp))
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .clip(RoundedCornerShape(15.dp))
+                            .clickable(enabled = billing.available && !billing.busy, onClick = onBuyRemoveAds),
+                        color = if (billing.available) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (billing.available) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        shape = RoundedCornerShape(15.dp),
+                    ) {
+                        Row(
+                            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Rounded.AutoAwesome, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (billing.busy) "Opening Google Play…"
+                                else "REMOVE ADS · ${billing.price}",
+                                style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
+                            )
+                        }
+                    }
+                    if (!billing.available) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            billing.message ?: "Google Play is connecting…",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = onRestorePurchase, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Rounded.Restore, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Restore purchase", fontSize = 13.sp)
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onWatchRewarded)
+                            .padding(horizontal = 15.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SettingsIcon(Icons.Rounded.PlayCircle)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Watch a short video",
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.5.sp),
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "24 hours ad-free. Optional.",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            "WATCH",
+                            fontFamily = SpaceMono,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
         SettingsLabel("PRIVACY")
         Spacer(Modifier.height(8.dp))
         HatchCard(Modifier.fillMaxWidth()) {
@@ -295,7 +418,7 @@ fun SettingsScreen(
             SettingsRow(
                 icon = Icons.Rounded.Memory,
                 title = "Rust core + Compose",
-                subtitle = "ZIP · RAR · 7Z · TAR · GZ · multipart",
+                subtitle = "ZIP · RAR · 7Z · TAR · XZ · ZSTD · BZ2 · multipart",
                 action = null,
                 onAction = {},
             )
@@ -317,7 +440,7 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.width(9.dp))
                 Text(
-                    "No analytics, no uploads. Hatch works fully offline.",
+                    "Files are processed on-device. Ads use Google's network; file contents are never uploaded.",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

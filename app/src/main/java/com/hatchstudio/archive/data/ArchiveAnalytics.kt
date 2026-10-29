@@ -57,7 +57,11 @@ object Archives {
     fun stem(displayName: String): String {
         val base = displayName.substringAfterLast('/').substringAfterLast('\\')
         val lower = base.lowercase()
-        for (ext in listOf(".tar.gz", ".tgz", ".zip", ".rar", ".7z", ".tar", ".gz")) {
+        for (ext in listOf(
+            ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.zst", ".tzst",
+            ".tar.bz2", ".tbz2", ".tbz", ".zip", ".rar", ".7z", ".tar",
+            ".gz", ".xz", ".zst", ".zstd", ".bz2",
+        )) {
             if (lower.endsWith(ext)) return base.dropLast(ext.length).ifBlank { "Archive" }
         }
         return base.substringBeforeLast('.', base).ifBlank { "Archive" }
@@ -79,6 +83,9 @@ object Archives {
             lower.endsWith(".rar") || lower.endsWith(".7z") ||
             lower.endsWith(".tar") || lower.endsWith(".tar.gz") ||
             lower.endsWith(".tgz") || lower.endsWith(".gz") ||
+            lower.endsWith(".xz") || lower.endsWith(".txz") ||
+            lower.endsWith(".zst") || lower.endsWith(".zstd") || lower.endsWith(".tzst") ||
+            lower.endsWith(".bz2") || lower.endsWith(".tbz2") || lower.endsWith(".tbz") ||
             Regex("\\.z\\d{2}$").containsMatchIn(lower) ||
             Regex("\\.r\\d{2}$").containsMatchIn(lower) ||
             Regex("\\.7z\\.\\d{3}$").containsMatchIn(lower) ||
@@ -86,7 +93,7 @@ object Archives {
     }
 
     fun formatLabel(info: ArchiveInfo): String = when (info.format) {
-        "TAR.GZ" -> "TAR.GZ"
+        "TAR.GZ", "TAR.XZ", "TAR.ZST", "TAR.BZ2" -> info.format
         else -> info.format
     }
 }

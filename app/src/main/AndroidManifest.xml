@@ -3,6 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="com.android.vending.BILLING" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -46,6 +49,10 @@
                 <data android:mimeType="application/x-tar" />
                 <data android:mimeType="application/gzip" />
                 <data android:mimeType="application/x-gzip" />
+                <data android:mimeType="application/x-xz" />
+                <data android:mimeType="application/zstd" />
+                <data android:mimeType="application/x-bzip2" />
+                <data android:mimeType="application/x-compressed-tar" />
             </intent-filter>
 
             <intent-filter android:label="@string/open_archive">
@@ -63,6 +70,15 @@
                 <data android:pathPattern=".*\\.tar" />
                 <data android:pathPattern=".*\\.tgz" />
                 <data android:pathPattern=".*\\.tar\\.gz" />
+                <data android:pathPattern=".*\\.xz" />
+                <data android:pathPattern=".*\\.txz" />
+                <data android:pathPattern=".*\\.tar\\.xz" />
+                <data android:pathPattern=".*\\.zst" />
+                <data android:pathPattern=".*\\.tzst" />
+                <data android:pathPattern=".*\\.tar\\.zst" />
+                <data android:pathPattern=".*\\.bz2" />
+                <data android:pathPattern=".*\\.tbz2" />
+                <data android:pathPattern=".*\\.tar\\.bz2" />
             </intent-filter>
 
             <intent-filter android:label="@string/extract_free_space">
@@ -74,6 +90,9 @@
                 <data android:mimeType="application/x-7z-compressed" />
                 <data android:mimeType="application/x-tar" />
                 <data android:mimeType="application/gzip" />
+                <data android:mimeType="application/x-xz" />
+                <data android:mimeType="application/zstd" />
+                <data android:mimeType="application/x-bzip2" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
@@ -100,5 +119,9 @@
         <meta-data
             android:name="android.app.shortcuts"
             android:resource="@xml/shortcuts" />
+
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
     </application>
 </manifest>

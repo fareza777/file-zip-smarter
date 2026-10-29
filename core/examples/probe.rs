@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 fn main() {
     let path = std::env::args().nth(1).expect("archive path");
+    let password = std::env::args().nth(2);
     let file = File::open(&path).unwrap();
     let name = PathBuf::from(&path)
         .file_name()
@@ -14,7 +15,7 @@ fn main() {
         file,
         OpenOptions {
             display_name: name,
-            password: None,
+            password,
             temp_dir: std::env::temp_dir(),
             rar_path: PathBuf::from(&path),
             multipart: false,

@@ -35,7 +35,8 @@ data class SafNode(
 
     companion object {
         val ARCHIVE_EXTENSIONS = setOf(
-            "zip", "rar", "7z", "tar", "gz", "tgz", "z01", "001", "r00", "part1",
+            "zip", "rar", "7z", "tar", "gz", "tgz", "xz", "txz", "zst", "zstd",
+            "tzst", "bz2", "tbz2", "tbz", "z01", "001", "r00", "part1",
         )
         private val SPLIT_PATTERN = Regex(
             "(?i).+(\\.(z\\d{2}|r\\d{2}|\\d{3})|\\.part\\d+\\.rar)$",
@@ -271,8 +272,14 @@ class SafTree(
                 lower.endsWith(".rar") || lower.endsWith(".r00") -> "RAR"
                 lower.endsWith(".7z") || Regex("\\.7z\\.\\d{3}$").containsMatchIn(lower) -> "7Z"
                 lower.endsWith(".tar.gz") || lower.endsWith(".tgz") -> "TAR.GZ"
+                lower.endsWith(".tar.xz") || lower.endsWith(".txz") -> "TAR.XZ"
+                lower.endsWith(".tar.zst") || lower.endsWith(".tzst") -> "TAR.ZST"
+                lower.endsWith(".tar.bz2") || lower.endsWith(".tbz2") || lower.endsWith(".tbz") -> "TAR.BZ2"
                 lower.endsWith(".tar") -> "TAR"
                 lower.endsWith(".gz") -> "GZIP"
+                lower.endsWith(".xz") -> "XZ"
+                lower.endsWith(".zst") || lower.endsWith(".zstd") -> "ZSTD"
+                lower.endsWith(".bz2") -> "BZIP2"
                 else -> null
             }
         }

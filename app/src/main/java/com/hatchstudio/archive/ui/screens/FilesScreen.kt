@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DriveFileRenameOutline
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.FolderZip
 import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
@@ -99,6 +100,7 @@ fun FilesScreen(
     onOpenArchivePicker: () -> Unit,
     onOpenCleaner: () -> Unit,
     onBatchExtract: (List<SafNode>) -> Unit,
+    onCreateZip: (List<SafNode>) -> Unit,
     onDelete: (List<SafNode>) -> Unit,
     onRename: (SafNode, String) -> Unit,
 ) {
@@ -169,6 +171,12 @@ fun FilesScreen(
                                     Icon(if (state.grid) Icons.Rounded.ViewList else Icons.Rounded.GridOn, null)
                                 },
                                 onClick = { showMenu = false; onToggleGrid() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Create ZIP from this folder", fontSize = 16.sp) },
+                                leadingIcon = { Icon(Icons.Rounded.FolderZip, null) },
+                                enabled = state.nodes.isNotEmpty(),
+                                onClick = { showMenu = false; onCreateZip(state.nodes) },
                             )
                             DropdownMenuItem(
                                 text = { Text("Change landing folder", fontSize = 16.sp) },
@@ -354,6 +362,7 @@ fun FilesScreen(
                         selected = selectedNodes,
                         onClear = onClearSelection,
                         onExtract = { onBatchExtract(archives) },
+                        onCreateZip = { onCreateZip(selectedNodes) },
                         onDelete = { showDelete = true },
                         onRename = {
                             selectedNodes.singleOrNull()?.let {
@@ -592,6 +601,7 @@ private fun SelectionBar(
     selected: List<SafNode>,
     onClear: () -> Unit,
     onExtract: () -> Unit,
+    onCreateZip: () -> Unit,
     onDelete: () -> Unit,
     onRename: () -> Unit,
     onShare: () -> Unit,
@@ -629,6 +639,9 @@ private fun SelectionBar(
                 IconButton(onClick = onRename, modifier = Modifier.size(42.dp)) {
                     Icon(Icons.Rounded.DriveFileRenameOutline, "Rename", modifier = Modifier.size(21.dp))
                 }
+            }
+            IconButton(onClick = onCreateZip, modifier = Modifier.size(42.dp)) {
+                Icon(Icons.Rounded.FolderZip, "Create ZIP", modifier = Modifier.size(21.dp))
             }
             IconButton(onClick = onDelete, modifier = Modifier.size(42.dp)) {
                 Icon(Icons.Rounded.Delete, "Delete", modifier = Modifier.size(20.dp))
