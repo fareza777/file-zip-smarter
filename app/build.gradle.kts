@@ -140,3 +140,14 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
+
+// Fail release builds that would ship Google's sample ad units (-PrequireRealAds=true).
+val requireRealAds = providers.gradleProperty("requireRealAds").map { it.toBoolean() }.orElse(false).get()
+gradle.taskGraph.whenReady {
+    val releasing = allTasks.any { it.project == project && it.name.contains("Release") }
+    if (requireRealAds && releasing) {
+        val sample = listOf(admobAppId, admobBannerId, admobInterstitialId, admobRewardedId)
+            .filter { it.contains("3940256099942544") }
+        if (sample.isNotEmpty()) throw GradleException("Release uses Google sample AdMob IDs: $sample")
+    }
+}
