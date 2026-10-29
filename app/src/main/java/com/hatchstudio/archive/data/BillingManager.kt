@@ -7,6 +7,7 @@ import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingFlowParams
 import com.android.billingclient.api.BillingResult
+import com.android.billingclient.api.PendingPurchasesParams
 import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
@@ -38,7 +39,7 @@ class BillingManager(
 
     private val client: BillingClient = BillingClient.newBuilder(appContext)
         .setListener(this)
-        .enablePendingPurchases()
+        .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
         .build()
 
     private var details: ProductDetails? = null
@@ -132,7 +133,7 @@ class BillingManager(
         val params = QueryProductDetailsParams.newBuilder()
             .setProductList(listOf(product))
             .build()
-        client.queryProductDetailsAsync(params) { result, products ->
+        client.queryProductDetailsAsync(params) { result, productsResult ->
             if (result.responseCode != BillingClient.BillingResponseCode.OK) {
                 _state.value = _state.value.copy(
                     available = false,
@@ -141,7 +142,7 @@ class BillingManager(
                 )
                 return@queryProductDetailsAsync
             }
-            details = products.firstOrNull()
+            details = productsResult.productDetailsList.firstOrNull()
             val price = details?.oneTimePurchaseOfferDetails?.formattedPrice
             _state.value = _state.value.copy(
                 available = details != null,
