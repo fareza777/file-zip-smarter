@@ -38,7 +38,7 @@ build() {
   export "CFLAGS_${env_triple}=--target=${triple}${API}"
   export "CXXFLAGS_${env_triple}=--target=${triple}${API}"
   export "CARGO_TARGET_${upper}_LINKER=$cc"
-  export "CARGO_TARGET_${upper}_RUSTFLAGS=-C link-arg=--target=${triple}${API} -C link-arg=-lc++_shared"
+  export "CARGO_TARGET_${upper}_RUSTFLAGS=-C link-arg=--target=${triple}${API} -C link-arg=-lc++_shared -C link-arg=-Wl,-z,max-page-size=16384"
   export "CARGO_PROFILE_RELEASE_DEBUG=false"
   local so="$ROOT/core/target/$triple/release/libhatch_core.so"
   # Force a fresh link so a stale, differently linked artifact can never be
@@ -53,6 +53,13 @@ build() {
   fi
   if ! "$BIN/llvm-readelf.exe" -d "$so" | grep -q 'NEEDED.*libc\.so'; then
     echo "error: $so does not depend on shared libc.so; refusing to package it." >&2
+    exit 1
+  fi
+
+  # Google Play requires 16 KB page-size support: every PT_LOAD segment must be
+  # aligned to at least 0x4000 or the bundle is rejected.
+  if "$BIN/llvm-readelf.exe" -lW "$so" | awk '$1=="LOAD" && strtonum($NF) < 16384 {bad=1} END {exit !bad}'; then
+    echo "error: $so has LOAD segments aligned below 16 KB; refusing to package it." >&2
     exit 1
   fi
 
